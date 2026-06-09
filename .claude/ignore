@@ -1,0 +1,9 @@
+vendor/
+node_modules/
+storage/
+public/build/
+public/hot
+bootstrap/cache/
+.phpunit.cache/
+*.log
+*.lock
