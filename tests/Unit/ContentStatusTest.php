@@ -53,6 +53,15 @@ class ContentStatusTest extends TestCase
         $item->changeStatus(ContentStatus::Geplaatst);
     }
 
+    public function test_concept_can_go_directly_to_goedgekeurd_for_handwritten_posts(): void
+    {
+        $item = $this->makeItem(ContentStatus::Concept);
+
+        $item->changeStatus(ContentStatus::Goedgekeurd, 'Handgeschreven post direct goedgekeurd.');
+
+        $this->assertEquals(ContentStatus::Goedgekeurd, $item->fresh()->status);
+    }
+
     public function test_audit_log_written_on_transition(): void
     {
         $item = $this->makeItem(ContentStatus::Concept);

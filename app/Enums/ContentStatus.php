@@ -41,7 +41,9 @@ enum ContentStatus: string
     public static function allowedTransitions(): array
     {
         return [
-            self::Concept->value => [self::Gegenereerd->value],
+            // Concept kan via de AI-generatieflow naar Gegenereerd, of voor
+            // handgeschreven posts direct naar Goedgekeurd (review wordt overgeslagen).
+            self::Concept->value => [self::Gegenereerd->value, self::Goedgekeurd->value],
             self::Gegenereerd->value => [self::InReview->value],
             self::InReview->value => [self::Goedgekeurd->value],
             self::Goedgekeurd->value => [self::Ingepland->value],

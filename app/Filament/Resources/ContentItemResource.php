@@ -196,6 +196,23 @@ class ContentItemResource extends Resource
                         Notification::make()->title('Goedgekeurd')->success()->send();
                     }),
 
+                // Voor handgeschreven posts: sla AI-generatie en review over en
+                // ga direct van Concept naar Goedgekeurd. Vereist dat er tekst staat.
+                Tables\Actions\Action::make('approve_direct')
+                    ->label('Direct goedkeuren')
+                    ->icon('heroicon-o-check-badge')
+                    ->color('success')
+                    ->visible(fn (ContentItem $record) => $record->status === ContentStatus::Concept
+                        && filled($record->generated_text))
+                    ->requiresConfirmation()
+                    ->modalHeading('Handgeschreven post direct goedkeuren')
+                    ->modalDescription('Hiermee sla je de AI-generatie en de review over. De post komt meteen op status Goedgekeurd en kan ingepland worden.')
+                    ->modalSubmitActionLabel('Ja, direct goedkeuren')
+                    ->action(function (ContentItem $record) {
+                        $record->changeStatus(ContentStatus::Goedgekeurd, 'Handgeschreven post direct goedgekeurd via Filament.');
+                        Notification::make()->title('Goedgekeurd')->success()->send();
+                    }),
+
                 Tables\Actions\Action::make('schedule')
                     ->label('Inplannen bij Publer')
                     ->icon('heroicon-o-paper-airplane')
