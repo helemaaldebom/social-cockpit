@@ -177,16 +177,22 @@ class PublerPublisher implements PublisherInterface
      * Publer-account maar één post staan. Daarmee voorkomen we dat we per
      * ongeluk andere posts in de workspace matchen.
      */
-    private function resolvePostIds(array $accountIds, CarbonInterface $scheduledFor, int $maxAttempts = 12, int $sleepMs = 1000): array
+    private function resolvePostIds(array $accountIds, CarbonInterface $scheduledFor, int $maxAttempts = 60, int $sleepMs = 1500): array
     {
+        // Publer heeft soms 10–30s nodig om een bulk-schedule te verwerken.
+        // Een korte voorvertraging voorkomt onmiddellijke lege polls.
+        usleep(2_000_000);
+
         $expectedTs = $scheduledFor->copy()->utc()->getTimestamp();
         $expected   = count($accountIds);
 
         $matched = [];
 
         for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
+            // Geen state-filter: tijdens verwerking kan een post kort in een
+            // andere status zitten. We filteren in PHP op state == scheduled.
             $response = Http::withHeaders($this->headers())
-                ->get(self::BASE_URL . '/posts', ['state' => 'scheduled']);
+                ->get(self::BASE_URL . '/posts');
 
             if (! $response->successful()) {
                 Log::warning('Publer posts list failed', [
