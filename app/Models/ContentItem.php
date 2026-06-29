@@ -18,8 +18,8 @@ class ContentItem extends Model
     protected $fillable = [
         'client_id', 'title', 'brief', 'original_text', 'generated_text',
         'media_path', 'media_paths',
-        'status', 'scheduled_for', 'publer_post_id', 'telegram_message_id',
-        'source_article_id',
+        'status', 'scheduled_for', 'publer_post_id', 'publer_post_ids',
+        'telegram_message_id', 'source_article_id',
     ];
 
     protected $attributes = [
@@ -31,6 +31,7 @@ class ContentItem extends Model
         'scheduled_for' => 'datetime',
         'telegram_message_id' => 'integer',
         'media_paths' => 'array',
+        'publer_post_ids' => 'array',
     ];
 
     /**
