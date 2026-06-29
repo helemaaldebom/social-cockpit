@@ -195,18 +195,12 @@ class ContentItemResource extends Resource
                         Notification::make()->title('Generatie gestart')->success()->send();
                     }),
 
-                Tables\Actions\Action::make('approve')
-                    ->label('Goedkeuren')
-                    ->icon('heroicon-o-check-circle')
-                    ->color('success')
-                    ->visible(fn (ContentItem $record) => $record->status === ContentStatus::InReview)
-                    ->action(function (ContentItem $record) {
-                        $record->changeStatus(ContentStatus::Goedgekeurd, 'Goedgekeurd via Filament.');
-                        Notification::make()->title('Goedgekeurd')->success()->send();
-                    }),
-
-                // Voor handgeschreven posts: sla AI-generatie en review over en
-                // ga direct van Concept naar Goedgekeurd. Vereist dat er tekst staat.
+                // Goedkeuren-actie verwijderd: nieuwe items gaan via de
+                // auto-flow (GenerateContentTextJob -> SchedulePostToPublerJob)
+                // direct naar Ingepland, en Telegram is het reviewmoment.
+                // De "Direct goedkeuren"-actie voor handgeschreven posts in
+                // Filament zelf blijft beschikbaar voor klanten die handmatig
+                // content maken (bv. buro_deBom).
                 Tables\Actions\Action::make('approve_direct')
                     ->label('Direct goedkeuren')
                     ->icon('heroicon-o-check-badge')
