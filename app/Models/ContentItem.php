@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ContentStatus;
 use App\Exceptions\InvalidStatusTransitionException;
+use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
 use Illuminate\Database\Eloquent\Relations\BelongsTo;
@@ -33,6 +34,23 @@ class ContentItem extends Model
         'media_paths' => 'array',
         'publer_post_ids' => 'array',
     ];
+
+    /**
+     * Bewaar scheduled_for altijd in UTC.
+     *
+     * Eloquent slaat een Carbon-instance op met format('Y-m-d H:i:s') in de
+     * TIJDZONE van de Carbon zelf — er gebeurt geen automatische UTC-conversie
+     * bij save. Bij read castet Laravel de DB-string naar app.timezone (UTC).
+     * Als we hier niet expliciet naar UTC zetten, krijg je een mismatch: een
+     * Carbon van 07:30 Europe/Amsterdam wordt 07:30 in de DB opgeslagen en
+     * vervolgens als 07:30 UTC (= 09:30 NL) teruggelezen.
+     */
+    public function setScheduledForAttribute($value): void
+    {
+        $this->attributes['scheduled_for'] = $value
+            ? Carbon::parse($value)->setTimezone('UTC')->format('Y-m-d H:i:s')
+            : null;
+    }
 
     /**
      * Gecombineerde lijst van media-paths (zowel media_path als media_paths).
