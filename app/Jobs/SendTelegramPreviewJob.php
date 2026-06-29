@@ -31,7 +31,7 @@ class SendTelegramPreviewJob implements ShouldQueue
             ? $item->scheduled_for->setTimezone('Europe/Amsterdam')->format('d-m-Y H:i')
             : 'Onbekend';
 
-        $caption = "📋 <b>Preview — 24u voor publicatie</b>\n\n"
+        $caption = "📋 <b>Preview — 22u voor publicatie</b>\n\n"
             . "<b>Klant:</b> {$item->client->name}\n"
             . "<b>Titel:</b> {$item->title}\n"
             . "<b>Kanalen:</b> {$channels}\n"

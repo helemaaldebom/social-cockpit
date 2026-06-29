@@ -50,8 +50,11 @@ class SchedulePostToPublerJob implements ShouldQueue
 
         $item->changeStatus(ContentStatus::Ingepland, "Ingepland via Publer (ID: {$publerPostId}).");
 
+        // Preview komt 22 uur voor publicatie binnen. Bij een slot van 07:30 NL
+        // betekent dat een Telegram-bericht om 09:30 NL de dag ervoor — een
+        // praktischer reviewmoment dan 07:30 (slaaptijd).
         SendTelegramPreviewJob::dispatch($item)->delay(
-            $scheduledAt->copy()->subHours(24)
+            $scheduledAt->copy()->subHours(22)
         );
     }
 
