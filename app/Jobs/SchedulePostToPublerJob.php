@@ -42,13 +42,23 @@ class SchedulePostToPublerJob implements ShouldQueue
 
         $scheduledAt = Carbon::parse($this->scheduledFor, 'Europe/Amsterdam');
 
-        $publerPostId = $publisher->schedulePost($item, $this->publerAccountIds, $scheduledAt);
+        // schedulePost() returnt direct met job_id. Polling voor de echte
+        // per-netwerk post_ids gebeurt in een aparte ResolvePublerPostIdsJob,
+        // zodat deze worker-job snel klaar is en de queue niet blokkeert.
+        $jobId = $publisher->schedulePost($item, $this->publerAccountIds, $scheduledAt);
 
-        $item->publer_post_id = $publerPostId;
-        $item->scheduled_for = $scheduledAt;
+        $item->publer_post_id = $jobId; // tijdelijke waarde; wordt overschreven door ResolveJob met eerste echte post_id
+        $item->scheduled_for  = $scheduledAt;
         $item->save();
 
-        $item->changeStatus(ContentStatus::Ingepland, "Ingepland via Publer (ID: {$publerPostId}).");
+        $item->changeStatus(ContentStatus::Ingepland, "Ingepland via Publer (job: {$jobId}).");
+
+        // Achtergrond: haal de echte per-netwerk post_ids op (begint na 10s).
+        ResolvePublerPostIdsJob::dispatch(
+            $item->id,
+            $this->publerAccountIds,
+            $scheduledAt->toIso8601String()
+        )->delay(now()->addSeconds(10));
 
         // Preview komt 22 uur voor publicatie binnen. Bij een slot van 07:30 NL
         // betekent dat een Telegram-bericht om 09:30 NL de dag ervoor — een

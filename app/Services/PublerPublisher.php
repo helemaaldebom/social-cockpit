@@ -152,21 +152,21 @@ class PublerPublisher implements PublisherInterface
             throw new \RuntimeException('Publer API error: ' . $response->body());
         }
 
-        // Schedule-call levert een job_id; de échte post_ids (één per netwerk)
-        // komen uit GET /posts. Publer's job_id-queryparameter filtert niet
-        // (returned alle posts), dus we matchen client-side op de unieke
-        // combinatie account_id + scheduled_at + state=scheduled.
+        // Schedule-call levert direct een job_id. De échte post_ids per netwerk
+        // worden in een aparte job opgehaald (ResolvePublerPostIdsJob), zodat
+        // deze worker-job snel afrondt en de queue niet blokkeert.
         $jobId = $response->json('job_id') ?? $response->json('data.id') ?? 'unknown';
 
-        $postIds = $this->resolvePostIds($publerAccountIds, $scheduledFor);
-
-        if (! empty($postIds)) {
-            $item->publer_post_ids = $postIds;
-            $item->publer_post_id  = $postIds[0];
-            $item->save();
-        }
-
         return (string) $jobId;
+    }
+
+    /**
+     * Publieke wrapper voor ResolvePublerPostIdsJob. Geen interne sleep —
+     * dat regelt de aanroepende job met dispatch->delay() of een eigen retry.
+     */
+    public function resolvePostIdsPublic(array $accountIds, CarbonInterface $scheduledFor, int $maxAttempts = 10, int $sleepMs = 1500): array
+    {
+        return $this->resolvePostIds($accountIds, $scheduledFor, $maxAttempts, $sleepMs);
     }
 
     /**
@@ -177,12 +177,8 @@ class PublerPublisher implements PublisherInterface
      * Publer-account maar één post staan. Daarmee voorkomen we dat we per
      * ongeluk andere posts in de workspace matchen.
      */
-    private function resolvePostIds(array $accountIds, CarbonInterface $scheduledFor, int $maxAttempts = 60, int $sleepMs = 1500): array
+    private function resolvePostIds(array $accountIds, CarbonInterface $scheduledFor, int $maxAttempts = 10, int $sleepMs = 1500): array
     {
-        // Publer heeft soms 10–30s nodig om een bulk-schedule te verwerken.
-        // Een korte voorvertraging voorkomt onmiddellijke lege polls.
-        usleep(2_000_000);
-
         $expectedTs = $scheduledFor->copy()->utc()->getTimestamp();
         $expected   = count($accountIds);
 
