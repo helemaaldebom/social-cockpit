@@ -20,7 +20,7 @@ class ClientSeeder extends Seeder
             ['slug' => 'zts'],
             [
                 'name' => 'ZTS / Zanen Techniek Service',
-                'tone_of_voice' => 'Je bent een social media copywriter voor ZTS, een technisch servicebedrijf. Schrijf professionele, heldere posts die de expertise en betrouwbaarheid van het bedrijf uitstralen. Gebruik een zakelijke maar toegankelijke toon.',
+                'tone_of_voice' => self::ztsToneOfVoice(),
                 'active' => true,
             ]
         );
@@ -129,6 +129,18 @@ class ClientSeeder extends Seeder
         PublishSlot::firstOrCreate(
             ['client_id' => $bas->id, 'day_of_week' => 3, 'time' => '08:00:00'],
             ['timezone' => 'Europe/Amsterdam', 'interval_weeks' => 1, 'active' => false]
+        );
+    }
+
+    /**
+     * De ZTS-prompt staat ook in
+     * database/migrations/2026_06_29_112724_update_zts_tone_of_voice.php
+     * (die overschrijft een bestaande zts-klant naar de laatste versie).
+     */
+    private static function ztsToneOfVoice(): string
+    {
+        return file_get_contents(
+            database_path('seeders/prompts/zts_tone_of_voice.md')
         );
     }
 }

@@ -16,7 +16,8 @@ class ContentItem extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'client_id', 'title', 'brief', 'generated_text', 'media_path',
+        'client_id', 'title', 'brief', 'original_text', 'generated_text',
+        'media_path', 'media_paths',
         'status', 'scheduled_for', 'publer_post_id', 'telegram_message_id',
         'source_article_id',
     ];
@@ -29,7 +30,21 @@ class ContentItem extends Model
         'status' => ContentStatus::class,
         'scheduled_for' => 'datetime',
         'telegram_message_id' => 'integer',
+        'media_paths' => 'array',
     ];
+
+    /**
+     * Gecombineerde lijst van media-paths (zowel media_path als media_paths).
+     * Eerst is doorgaans de "hoofdmedia". Lege strings/nulls worden gefilterd.
+     */
+    public function allMediaPaths(): array
+    {
+        $paths = $this->media_paths ?? [];
+        if ($this->media_path && ! in_array($this->media_path, $paths, true)) {
+            array_unshift($paths, $this->media_path);
+        }
+        return array_values(array_filter($paths, fn ($p) => filled($p)));
+    }
 
     public function client(): BelongsTo
     {

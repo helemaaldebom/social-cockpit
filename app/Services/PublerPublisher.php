@@ -75,19 +75,36 @@ class PublerPublisher implements PublisherInterface
 
     public function schedulePost(ContentItem $item, array $publerAccountIds, CarbonInterface $scheduledFor): string
     {
-        // Upload media if present
-        $mediaId = null;
-        if ($item->media_path) {
-            $localPath = storage_path('app/public/' . $item->media_path);
-            $mediaId = $this->uploadMedia($localPath);
+        // Upload alle media (foto + video). De aanwezigheid van video bepaalt het posttype.
+        $mediaPaths = $item->allMediaPaths();
+        $mediaItems = [];
+        $hasVideo   = false;
+
+        foreach ($mediaPaths as $relativePath) {
+            $localPath = storage_path('app/public/' . $relativePath);
+            $mediaId   = $this->uploadMedia($localPath);
+            if (! $mediaId) {
+                continue;
+            }
+            $ext = strtolower(pathinfo($localPath, PATHINFO_EXTENSION));
+            if (in_array($ext, ['mp4', 'mov', 'avi', 'wmv', 'webm', 'm4v'], true)) {
+                $hasVideo = true;
+            }
+            $mediaItems[] = ['id' => $mediaId];
         }
+
+        $type = match (true) {
+            $hasVideo            => 'video',
+            ! empty($mediaItems) => 'photo',
+            default              => 'status',
+        };
 
         // Build one post-entry per channel so each gets the right network type
         $channels = $item->channels->filter(
             fn (Channel $ch) => in_array($ch->publer_account_id, $publerAccountIds)
         );
 
-        $posts = $channels->map(function (Channel $channel) use ($item, $scheduledFor, $mediaId) {
+        $posts = $channels->map(function (Channel $channel) use ($item, $scheduledFor, $mediaItems, $type) {
             $network = $channel->network instanceof \App\Enums\SocialNetwork
                 ? $channel->network->value
                 : (string) $channel->network;
@@ -95,12 +112,12 @@ class PublerPublisher implements PublisherInterface
             $publerNet = $this->publerNetwork($network);
 
             $networkPayload = [
-                'type' => $mediaId ? 'photo' : 'status',
+                'type' => $type,
                 'text' => $item->generated_text,
             ];
 
-            if ($mediaId) {
-                $networkPayload['media'] = [['id' => $mediaId]];
+            if (! empty($mediaItems)) {
+                $networkPayload['media'] = $mediaItems;
             }
 
             return [
