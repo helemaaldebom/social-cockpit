@@ -152,11 +152,13 @@ class PublerPublisher implements PublisherInterface
             throw new \RuntimeException('Publer API error: ' . $response->body());
         }
 
-        // Schedule-call levert een job_id; de échte post_ids (één per netwerk) komen
-        // uit /posts/jobs/{job_id} zodra Publer de job heeft afgewerkt.
+        // Schedule-call levert een job_id; de échte post_ids (één per netwerk)
+        // komen uit GET /posts. Publer's job_id-queryparameter filtert niet
+        // (returned alle posts), dus we matchen client-side op de unieke
+        // combinatie account_id + scheduled_at + state=scheduled.
         $jobId = $response->json('job_id') ?? $response->json('data.id') ?? 'unknown';
 
-        $postIds = $this->resolvePostIdsForJob((string) $jobId);
+        $postIds = $this->resolvePostIds($publerAccountIds, $scheduledFor);
 
         if (! empty($postIds)) {
             $item->publer_post_ids = $postIds;
@@ -168,9 +170,83 @@ class PublerPublisher implements PublisherInterface
     }
 
     /**
-     * Polt /posts/jobs/{job_id} tot de bulk-schedule job klaar is en geeft de
-     * resulterende post-IDs terug. Faalt zacht (lege array) — caller bepaalt
-     * wat er met een lege uitkomst gebeurt (we hebben job_id altijd nog).
+     * Haalt de scheduled posts op en filtert client-side op de specifieke
+     * combinatie account_id ∈ $accountIds én scheduled_at == $scheduledFor.
+     *
+     * Dit is uniek per scheduling-call: voor één tijdstip kan er per
+     * Publer-account maar één post staan. Daarmee voorkomen we dat we per
+     * ongeluk andere posts in de workspace matchen.
+     */
+    private function resolvePostIds(array $accountIds, CarbonInterface $scheduledFor, int $maxAttempts = 12, int $sleepMs = 1000): array
+    {
+        $expectedTs = $scheduledFor->copy()->utc()->getTimestamp();
+        $expected   = count($accountIds);
+
+        $matched = [];
+
+        for ($attempt = 0; $attempt < $maxAttempts; $attempt++) {
+            $response = Http::withHeaders($this->headers())
+                ->get(self::BASE_URL . '/posts', ['state' => 'scheduled']);
+
+            if (! $response->successful()) {
+                Log::warning('Publer posts list failed', [
+                    'status' => $response->status(),
+                    'body'   => $response->body(),
+                ]);
+                usleep($sleepMs * 1000);
+                continue;
+            }
+
+            $body  = $response->json() ?? [];
+            $posts = $body['posts'] ?? $body['data'] ?? [];
+
+            $matched = [];
+            foreach ((array) $posts as $post) {
+                $accountId   = $post['account_id'] ?? null;
+                $scheduledAt = $post['scheduled_at'] ?? null;
+                $state       = strtolower((string) ($post['state'] ?? ''));
+
+                if (! $accountId || ! $scheduledAt || $state !== 'scheduled') {
+                    continue;
+                }
+
+                if (! in_array($accountId, $accountIds, true)) {
+                    continue;
+                }
+
+                // Vergelijk in UTC seconds, immuun voor timezone-string-variaties.
+                try {
+                    $postTs = Carbon::parse($scheduledAt)->utc()->getTimestamp();
+                } catch (\Throwable) {
+                    continue;
+                }
+
+                if ($postTs !== $expectedTs) {
+                    continue;
+                }
+
+                $matched[] = (string) ($post['id'] ?? '');
+            }
+
+            $matched = array_values(array_unique(array_filter($matched)));
+
+            if (count($matched) >= $expected) {
+                return $matched;
+            }
+
+            usleep($sleepMs * 1000);
+        }
+
+        Log::warning('Publer resolvePostIds onvolledig', [
+            'expected_accounts' => $expected,
+            'matched'           => count($matched),
+            'scheduled_for'     => $scheduledFor->toIso8601String(),
+        ]);
+        return $matched;
+    }
+
+    /**
+     * @deprecated Vervangen door resolvePostIds() — Publer biedt geen werkende job-endpoint.
      */
     private function resolvePostIdsForJob(string $jobId, int $maxAttempts = 12, int $sleepMs = 1000): array
     {
