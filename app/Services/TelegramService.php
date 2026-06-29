@@ -56,6 +56,42 @@ class TelegramService
         }
     }
 
+    public function sendVideo(string $videoPath, string $caption = ''): ?int
+    {
+        $chatId = config('services.telegram.chat_id');
+
+        try {
+            $response = Http::attach('video', file_get_contents($videoPath), basename($videoPath))
+                ->post($this->baseUrl . '/sendVideo', [
+                    'chat_id'    => $chatId,
+                    'caption'    => $caption,
+                    'parse_mode' => 'HTML',
+                ]);
+            return $response->json('result.message_id');
+        } catch (\Throwable $e) {
+            Log::error('Telegram sendVideo failed', ['error' => $e->getMessage()]);
+            return null;
+        }
+    }
+
+    public function sendDocument(string $filePath, string $caption = ''): ?int
+    {
+        $chatId = config('services.telegram.chat_id');
+
+        try {
+            $response = Http::attach('document', file_get_contents($filePath), basename($filePath))
+                ->post($this->baseUrl . '/sendDocument', [
+                    'chat_id'    => $chatId,
+                    'caption'    => $caption,
+                    'parse_mode' => 'HTML',
+                ]);
+            return $response->json('result.message_id');
+        } catch (\Throwable $e) {
+            Log::error('Telegram sendDocument failed', ['error' => $e->getMessage()]);
+            return null;
+        }
+    }
+
     public function notify(string $message): void
     {
         $this->sendMessage($message);

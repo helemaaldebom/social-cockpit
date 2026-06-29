@@ -20,6 +20,9 @@ Elke overgang naar `mislukt` is altijd geldig. Elke overgang wordt gelogd in `co
 ### Inlaten
 1. Handmatig via Filament admin
 2. Webhook POST /api/webhook/content (HMAC-SHA256 via X-Webhook-Signature header)
+   - Accepteert: `client`, `brief`, `title?`, `original_text?`, `channels?[]`, `media_urls?[]`, `external_id?`
+   - `media_urls` worden gedownload naar `storage/app/public/media/{client-slug}/`
+   - `external_id` zorgt voor idempotentie bij retries (één ContentItem per bron-ID per klant)
 3. RSS via `FetchRssFeedsJob` (dagelijks)
 4. Telegram bot (POST /api/webhook/telegram)
 
@@ -44,9 +47,24 @@ Jobs: `GenerateContentTextJob`, `SchedulePostToPublerJob`, `SendTelegramPreviewJ
 - `ValidateWebhookSignature` middleware op webhook endpoint
 - TOTP 2FA via `pragmarx/google2fa-laravel`, beheer via `/admin/two-factor-setup`
 
+## ZTS auto-workflow
+
+Inzendingen op socialmedia.z-t-s.nl worden door de WordPress-plugin **MIM Social
+Publisher** (op die server) naast hun bestaande social_post-flow ook gePOST naar
+`/api/webhook/content` met `client=zts`, `original_text`, `media_urls[]`,
+`external_id` en HMAC-handtekening. De Cockpit downloadt de media, maakt een
+ContentItem aan (status Concept), draait `GenerateContentTextJob` (met de
+ZTS-tone-of-voice prompt uit `database/seeders/prompts/zts_tone_of_voice.md`),
+status → InReview → Goedgekeurd. De `social:process-scheduler` cron pakt het op
+naar het eerstvolgende dinsdag/vrijdag 07:30-slot en plant in via Publer.
+`SchedulePostToPublerJob` triggert `SendTelegramPreviewJob` 24u voor publicatie.
+Replies in Telegram refinen de tekst en updaten de bestaande Publer-post.
+
 ## Tests
 
-`php artisan test` — 13 tests, SQLite in-memory. Covert: status transitions, audit log, publish slot interval logica, webhook HMAC validatie.
+`php artisan test` — 16 tests, SQLite in-memory. Covert: status transitions,
+audit log, publish slot interval logica, webhook HMAC validatie, webhook media
++ originele tekst + idempotentie per `external_id`.
 
 ## Deployment
 

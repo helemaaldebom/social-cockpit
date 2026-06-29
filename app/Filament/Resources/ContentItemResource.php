@@ -90,17 +90,26 @@ class ContentItemResource extends Resource
                 ->required()
                 ->columnSpanFull(),
 
+            Forms\Components\Textarea::make('original_text')
+                ->label('Originele tekst van klant')
+                ->rows(4)
+                ->columnSpanFull()
+                ->helperText('De ongewijzigde tekst zoals door de klant ingediend. Wordt niet door AI overschreven.'),
+
             Forms\Components\Textarea::make('generated_text')
                 ->label('Gegenereerde tekst')
                 ->rows(6)
                 ->columnSpanFull(),
 
-            Forms\Components\FileUpload::make('media_path')
-                ->label('Media (afbeelding/video)')
+            Forms\Components\FileUpload::make('media_paths')
+                ->label('Media (foto / video, meerdere mogelijk)')
                 ->disk('public')
                 ->directory('media')
+                ->multiple()
+                ->reorderable()
                 ->downloadable()
-                ->maxSize(20480)
+                ->maxSize(102400)
+                ->acceptedFileTypes(['image/*', 'video/*', 'application/pdf'])
                 ->columnSpanFull(),
 
             Forms\Components\Select::make('channels')
