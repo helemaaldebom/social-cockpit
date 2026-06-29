@@ -329,6 +329,18 @@ class PublerPublisher implements PublisherInterface
         $response = Http::withHeaders($this->headers())
             ->delete(self::BASE_URL . '/posts/' . $publerPostId);
 
+        // Publer's DELETE retourneert vaak 404 "Not Found" terwijl de post
+        // wél verwijderd wordt (we hebben in productie meerdere keren een 404
+        // gezien gevolgd door GET 422 — de post is daadwerkelijk weg). We
+        // behandelen 404 daarom als succes om valse Telegram-alarmen
+        // te voorkomen. Echte fouten (auth, server) blijven wel gooien.
+        if ($response->status() === 404) {
+            Log::info('Publer deletePost: 404 (post niet meer aanwezig — behandeld als succes)', [
+                'publer_post_id' => $publerPostId,
+            ]);
+            return;
+        }
+
         if (! $response->successful()) {
             Log::error('Publer deletePost failed', [
                 'status'         => $response->status(),
