@@ -4,6 +4,7 @@ namespace App\Models;
 
 use App\Enums\ContentStatus;
 use App\Exceptions\InvalidStatusTransitionException;
+use App\Jobs\DeletePublerPostsJob;
 use Carbon\Carbon;
 use Illuminate\Database\Eloquent\Factories\HasFactory;
 use Illuminate\Database\Eloquent\Model;
@@ -34,6 +35,22 @@ class ContentItem extends Model
         'media_paths' => 'array',
         'publer_post_ids' => 'array',
     ];
+
+    /**
+     * Bij (soft-)delete via Filament/Eloquent verwijderen we ook de bijbehorende
+     * posts in Publer. We dispatchen een job met de IDs los van het model, zodat
+     * deze ook werkt nadat het ContentItem is verdwenen / gesoftdeleted.
+     */
+    protected static function booted(): void
+    {
+        static::deleting(function (ContentItem $item) {
+            $ids = $item->publer_post_ids ?: ($item->publer_post_id ? [$item->publer_post_id] : []);
+
+            if (! empty($ids)) {
+                DeletePublerPostsJob::dispatch(array_values($ids), (int) $item->id);
+            }
+        });
+    }
 
     /**
      * Bewaar scheduled_for altijd in UTC.
