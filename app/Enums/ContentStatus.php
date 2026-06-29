@@ -44,7 +44,9 @@ enum ContentStatus: string
             // Concept kan via de AI-generatieflow naar Gegenereerd, of voor
             // handgeschreven posts direct naar Goedgekeurd (review wordt overgeslagen).
             self::Concept->value => [self::Gegenereerd->value, self::Goedgekeurd->value],
-            self::Gegenereerd->value => [self::InReview->value],
+            // Na AI-generatie: naar InReview (handmatige flow) óf direct naar
+            // Goedgekeurd (auto-approve t.b.v. directe auto-scheduling).
+            self::Gegenereerd->value => [self::InReview->value, self::Goedgekeurd->value],
             self::InReview->value => [self::Goedgekeurd->value],
             self::Goedgekeurd->value => [self::Ingepland->value],
             self::Ingepland->value => [self::Geplaatst->value],

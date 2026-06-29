@@ -4,8 +4,6 @@ namespace App\Jobs;
 
 use App\Enums\ContentStatus;
 use App\Models\ContentItem;
-use App\Models\PublishSlot;
-use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -19,59 +17,50 @@ class ProcessAutoSchedulerJob implements ShouldQueue
 
     public function handle(): void
     {
-        $slots = PublishSlot::where('active', true)->with('client')->get();
-
-        foreach ($slots as $slot) {
-            $this->processSlot($slot);
-        }
-    }
-
-    private function processSlot(PublishSlot $slot): void
-    {
-        $nextOccurrence = $slot->nextOccurrence();
-
-        if (! $nextOccurrence) {
-            return;
-        }
-
-        // Alleen inplannen als het slot binnen de komende 25 uur valt
-        if ($nextOccurrence->gt(Carbon::now()->addHours(25))) {
-            return;
-        }
-
-        // Selecteer eerstvolgende goedgekeurde item van de klant (FIFO)
-        $item = ContentItem::where('client_id', $slot->client_id)
+        // Veiligheidsnet voor items die ondanks GenerateContentTextJob's
+        // auto-schedule alsnog op Goedgekeurd staan (bv. handmatig goedgekeurd
+        // via Filament, of auto-schedule mislukte omdat er geen vrij slot was).
+        $items = ContentItem::with('client')
             ->where('status', ContentStatus::Goedgekeurd->value)
             ->whereNull('publer_post_id')
             ->orderBy('created_at')
-            ->first();
+            ->get();
 
-        if (! $item) {
-            Log::info("ProcessAutoScheduler: geen goedgekeurd item voor client {$slot->client_id} (slot {$slot->id})");
+        foreach ($items as $item) {
+            $this->processItem($item);
+        }
+    }
+
+    private function processItem(ContentItem $item): void
+    {
+        $client = $item->client;
+        if (! $client) {
             return;
         }
 
-        // Stel scheduled_for in zodat Telegram-reminder de juiste tijd kent
-        $item->scheduled_for = $nextOccurrence;
-        $item->save();
-
-        $publerAccountIds = $slot->client->channels()
+        $publerAccountIds = $client->channels()
             ->where('active', true)
             ->whereNotNull('publer_account_id')
             ->pluck('publer_account_id')
             ->toArray();
 
         if (empty($publerAccountIds)) {
-            Log::warning("Geen Publer account IDs voor client {$slot->client_id}");
+            Log::warning("ProcessAutoScheduler: geen Publer-accounts voor client {$client->id}");
             return;
         }
 
-        Log::info("ProcessAutoScheduler: inplannen item #{$item->id} voor {$nextOccurrence} (client {$slot->client_id})");
+        $slot = $client->nextFreeSlot();
+        if (! $slot) {
+            Log::info("ProcessAutoScheduler: geen vrij slot voor item #{$item->id} (client {$client->id})");
+            return;
+        }
+
+        Log::info("ProcessAutoScheduler: inplannen item #{$item->id} voor {$slot} (client {$client->id})");
 
         SchedulePostToPublerJob::dispatch(
             $item,
             $publerAccountIds,
-            $nextOccurrence->toIso8601String()
+            $slot->toIso8601String()
         );
     }
 }
