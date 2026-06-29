@@ -62,6 +62,15 @@ class ContentStatusTest extends TestCase
         $this->assertEquals(ContentStatus::Goedgekeurd, $item->fresh()->status);
     }
 
+    public function test_gegenereerd_can_go_directly_to_goedgekeurd_for_auto_scheduling(): void
+    {
+        $item = $this->makeItem(ContentStatus::Gegenereerd);
+
+        $item->changeStatus(ContentStatus::Goedgekeurd, 'Automatisch goedgekeurd.');
+
+        $this->assertEquals(ContentStatus::Goedgekeurd, $item->fresh()->status);
+    }
+
     public function test_audit_log_written_on_transition(): void
     {
         $item = $this->makeItem(ContentStatus::Concept);
