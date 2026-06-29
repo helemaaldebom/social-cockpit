@@ -324,10 +324,19 @@ class PublerPublisher implements PublisherInterface
         }
     }
 
+    /**
+     * Verwijder een scheduled post uit Publer.
+     *
+     * BELANGRIJK: Publer's REST-style DELETE /posts/{id} (path-param) bestaat
+     * NIET — die geeft 404 en verwijdert niets. Het juiste endpoint is
+     * DELETE /posts?id=<id> (query-param). Response is { "deleted_ids": [...] };
+     * lege array betekent "niet gevonden / al weg" — we behandelen dat als
+     * idempotent succes.
+     */
     public function deletePost(string $publerPostId): void
     {
         $response = Http::withHeaders($this->headers())
-            ->delete(self::BASE_URL . '/posts/' . $publerPostId);
+            ->delete(self::BASE_URL . '/posts?id=' . urlencode($publerPostId));
 
         // Publer's DELETE retourneert vaak 404 "Not Found" terwijl de post
         // wél verwijderd wordt (we hebben in productie meerdere keren een 404
@@ -349,6 +358,20 @@ class PublerPublisher implements PublisherInterface
             ]);
             throw new \RuntimeException('Publer API error: ' . $response->body());
         }
+
+        $deletedIds = $response->json('deleted_ids') ?? [];
+
+        if (empty($deletedIds)) {
+            Log::info('Publer deletePost: niets te verwijderen (al weg)', [
+                'publer_post_id' => $publerPostId,
+            ]);
+            return;
+        }
+
+        Log::info('Publer deletePost: verwijderd', [
+            'publer_post_id' => $publerPostId,
+            'deleted_count'  => count($deletedIds),
+        ]);
     }
 
     public function getAccounts(): array
