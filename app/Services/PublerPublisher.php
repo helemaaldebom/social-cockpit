@@ -301,9 +301,30 @@ class PublerPublisher implements PublisherInterface
     {
         // Update álle post-IDs die we kennen voor dit item (één per netwerk).
         $postIds = $item->publer_post_ids ?: [$publerPostId];
-        $errors  = [];
+
+        // HARDE GUARD tegen cross-client-vervuiling: haal voor elk post-ID de
+        // huidige Publer-status op en weiger updaten als het account_id niet
+        // bij dit content_item's klant hoort. Voorkomt dat een fout-opgeslagen
+        // publer_post_id (van een andere klant) per ongeluk overschreven wordt.
+        $allowedAccountIds = $this->allowedAccountIdsForItem($item);
+
+        if (empty($allowedAccountIds)) {
+            throw new \RuntimeException("updatePost geweigerd: content_item #{$item->id} heeft geen Publer-accounts gekoppeld.");
+        }
+
+        $errors = [];
 
         foreach ($postIds as $id) {
+            if (! $this->postBelongsToItem((string) $id, $allowedAccountIds, $item->id)) {
+                // Dit post-ID is van een andere klant. NOOIT updaten.
+                Log::warning('Publer updatePost geweigerd: post hoort niet bij content_item', [
+                    'content_item_id' => $item->id,
+                    'publer_post_id'  => $id,
+                ]);
+                $errors[] = "{$id}: hoort niet bij deze klant — overgeslagen";
+                continue;
+            }
+
             $response = Http::withHeaders($this->headers())
                 ->put(self::BASE_URL . '/posts/' . $id, [
                     'text' => $item->generated_text,
@@ -322,6 +343,52 @@ class PublerPublisher implements PublisherInterface
         if (! empty($errors)) {
             throw new \RuntimeException('Publer API error(s): ' . implode(' | ', $errors));
         }
+    }
+
+    /**
+     * @return string[] account_ids van álle (ook inactieve) kanalen van de klant.
+     */
+    private function allowedAccountIdsForItem(ContentItem $item): array
+    {
+        return $item->client
+            ? $item->client->channels()->whereNotNull('publer_account_id')->pluck('publer_account_id')->all()
+            : [];
+    }
+
+    /**
+     * Roept GET /posts/{id} aan en controleert dat het account_id bij de klant
+     * van het content_item hoort. Faalt veilig (false) bij twijfel.
+     */
+    private function postBelongsToItem(string $publerPostId, array $allowedAccountIds, int $contentItemId): bool
+    {
+        try {
+            $response = Http::withHeaders($this->headers())
+                ->get(self::BASE_URL . '/posts/' . urlencode($publerPostId));
+        } catch (\Throwable $e) {
+            Log::warning('Publer ownership-check exception', [
+                'content_item_id' => $contentItemId,
+                'publer_post_id'  => $publerPostId,
+                'error'           => $e->getMessage(),
+            ]);
+            return false;
+        }
+
+        if (! $response->successful()) {
+            // Post bestaat niet meer of geen rechten — refuseer veilig.
+            Log::warning('Publer ownership-check non-2xx', [
+                'content_item_id' => $contentItemId,
+                'publer_post_id'  => $publerPostId,
+                'status'          => $response->status(),
+            ]);
+            return false;
+        }
+
+        $accountId = (string) ($response->json('account_id') ?? '');
+        if ($accountId === '') {
+            return false;
+        }
+
+        return in_array($accountId, $allowedAccountIds, true);
     }
 
     /**
