@@ -3,6 +3,7 @@
 namespace App\Http\Controllers;
 
 use App\Enums\ContentStatus;
+use App\Jobs\CompressLargeVideosJob;
 use App\Jobs\GenerateContentTextJob;
 use App\Models\Client;
 use App\Models\ContentItem;
@@ -80,7 +81,9 @@ class WebhookController extends Controller
 
         $item->channels()->attach($channelIds);
 
-        GenerateContentTextJob::dispatch($item);
+        // Eerst grote video's comprimeren (>100MB → ~50MB); die job dispatcht
+        // daarna zelf GenerateContentTextJob, ook als compressie faalt.
+        CompressLargeVideosJob::dispatch($item);
 
         Log::info('Webhook: content item aangemaakt', [
             'id'          => $item->id,
@@ -102,7 +105,7 @@ class WebhookController extends Controller
 
         foreach ($urls as $url) {
             try {
-                $response = Http::timeout(30)->get($url);
+                $response = Http::timeout(300)->get($url);
                 if (! $response->successful()) {
                     Log::warning('Webhook media download mislukt', ['url' => $url, 'status' => $response->status()]);
                     continue;
