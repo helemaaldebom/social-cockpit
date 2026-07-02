@@ -204,6 +204,90 @@ Gebruik liever:
 * mooi om te zien
 * strak resultaat
 
+## Formattering
+
+Volg voor product- en afleverberichten deze harde format-regels:
+
+### Opener
+
+Begin met een **directe nieuwsy zin** die het feit stelt, gevolgd door 1-2 emoji's aan het einde. Niet met de emoji vooraan. Niet met een verzonnen slogan.
+
+Voorbeelden goed:
+* Vier nieuwe Hapert aanhangwagens afgeleverd! 🚚💪
+* Weer een prachtige Hapert Azure de weg op! 🔥
+* Nieuwe EGO robotmaaier binnen! 🤖✨
+
+Voorbeelden fout (nooit doen):
+* "Staal dat klopt: nieuwe Hapert's voor ..."
+* "Kwaliteit die pronken kan"
+* "🔥 Klaar voor avontuur op wielen!" (emoji vooraan + verzonnen slogan)
+
+### Klantnaam en productnamen
+
+Zet **klantnaam** en **productnamen** in bold (`**...**`). Gebruik de klantnaam zoals ingevoerd door de klant — verander die niet.
+
+### Specificaties
+
+Zet specs NIET in lopende zinnen. Zet elke spec op een eigen regel, met een emoji-icoon vooraan dat visueel past bij die spec. Groepeer per product met een bold productnaam als header.
+
+Vaste emoji-set voor specs:
+* ⚙️ voor assen, vering, motor, techniek
+* 📏 voor bakmaat, afmetingen, lengte, breedte
+* 🛞 voor wielen, banden
+* 🪝 voor liersteun, koppeling, trekhaak
+* 📐 voor oprijklep, hoek, hellingshoek
+* 🧰 voor accessoires, gereedschap, bordenset, stapelrek
+* 🪜 voor koprek, opstap, ladder
+* 🔌 voor elektra, spiraalsnoer, verlichting
+* 🎨 voor kleur, afwerking
+* 🏋️ voor laadvermogen, gewicht
+
+### Sluiter
+
+Eén korte krachtige zin + één afsluitvariant uit de lijst hieronder + eventueel 1 emoji.
+
+Voorbeelden goed:
+* "Vier trailers die klaar zijn voor het echte werk. Mooi om te zien hoe zo'n compleet project samenkomt. Hier worden wij enthousiast van! 💪"
+* "Wat een uitvoering is dit geworden. We wensen de nieuwe eigenaar veel werkplezier."
+
+### Hashtags
+
+* **Altijd `#zanentechniekservice` als éérste hashtag**.
+* Alle hashtags **volledig lowercase**, geen CamelCase.
+* Kort en concreet — merken, producttype, regio, vak.
+
+Goed: `#zanentechniekservice #hapert #ht3 #azure #aanhangwagen #vakwerk #maatwerk #grootammers #molenlanden`
+Fout: `#Hapert #TrotsOpVakmanschap #KlaarVoorHetEchteWerk`
+
+### Compleet voorbeeld (gouden standaard voor afleverberichten met specs)
+
+```
+Vier nieuwe Hapert aanhangwagens afgeleverd! 🚚💪
+
+Sommige afleveringen zijn nét even bijzonder. Voor **GKBMV B.V.** mochten we maar liefst **vier nieuwe Hapert aanhangwagens** afleveren.
+
+Twee robuuste **Hapert HT3 kantelbare plateauwagens** en twee **Hapert Azure H2's**, volledig samengesteld voor intensief dagelijks gebruik.
+
+**Hapert HT3**
+⚙️ 3 x 1800 kg paraboolgeveerde assen met schokbrekers
+📏 Bakmaat 505 x 221 cm
+🛞 Zwarte wielen
+🪝 Liersteun met handlier
+📐 100 cm oprijklep
+🧰 Stapelrek, bordenset en onderbouw gemonteerd
+
+**Hapert Azure H2**
+⚙️ 3500 kg uitvoering met paraboolvering en schokbrekers
+📏 Bakmaat 335 x 200 cm
+🛞 Zwarte wielen
+🪜 Koprek
+🔌 Afneembaar spiraalsnoer
+
+Vier trailers die klaar zijn voor het echte werk. Mooi om te zien hoe zo'n compleet project samenkomt. Hier worden wij enthousiast van! 💪
+
+#zanentechniekservice #hapert #ht3 #azure #aanhangwagen #vakwerk #maatwerk #grootammers #molenlanden
+```
+
 ## Belangrijkste regel
 
 Iedere post moet voelen alsof hij geschreven is door een trotse vakman.
