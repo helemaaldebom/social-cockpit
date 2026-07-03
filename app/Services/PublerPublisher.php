@@ -5,6 +5,7 @@ namespace App\Services;
 use App\Contracts\PublisherInterface;
 use App\Models\Channel;
 use App\Models\ContentItem;
+use App\Services\TelegramService;
 use Carbon\Carbon;
 use Carbon\CarbonInterface;
 use Illuminate\Support\Facades\Http;
@@ -394,28 +395,20 @@ class PublerPublisher implements PublisherInterface
     /**
      * Verwijder een scheduled post uit Publer.
      *
-     * BELANGRIJK: Publer's REST-style DELETE /posts/{id} (path-param) bestaat
-     * NIET — die geeft 404 en verwijdert niets. Het juiste endpoint is
-     * DELETE /posts?id=<id> (query-param). Response is { "deleted_ids": [...] };
-     * lege array betekent "niet gevonden / al weg" — we behandelen dat als
-     * idempotent succes.
+     * Officiële spec (OpenAPI in publer.com/docs): DELETE /posts met verplichte
+     * query-parameter `post_ids` in exploded array-vorm:
+     *   DELETE /posts?post_ids[]=<id>
+     * Response: { "deleted_ids": [...] }. Lege array = al weg (idempotent OK).
+     *
+     * WAARSCHUWING uit de praktijk: een ONGELDIGE parameternaam (we gebruikten
+     * eerder `?id=`) laat Publer een bredere set posts verwijderen in plaats
+     * van een 400 te geven. Daarom checken we het antwoord: bevat deleted_ids
+     * ook maar één ID die we NIET vroegen, dan gaat er direct een alarm af.
      */
     public function deletePost(string $publerPostId): void
     {
         $response = Http::withHeaders($this->headers())
-            ->delete(self::BASE_URL . '/posts?id=' . urlencode($publerPostId));
-
-        // Publer's DELETE retourneert vaak 404 "Not Found" terwijl de post
-        // wél verwijderd wordt (we hebben in productie meerdere keren een 404
-        // gezien gevolgd door GET 422 — de post is daadwerkelijk weg). We
-        // behandelen 404 daarom als succes om valse Telegram-alarmen
-        // te voorkomen. Echte fouten (auth, server) blijven wel gooien.
-        if ($response->status() === 404) {
-            Log::info('Publer deletePost: 404 (post niet meer aanwezig — behandeld als succes)', [
-                'publer_post_id' => $publerPostId,
-            ]);
-            return;
-        }
+            ->delete(self::BASE_URL . '/posts?post_ids[]=' . urlencode($publerPostId));
 
         if (! $response->successful()) {
             Log::error('Publer deletePost failed', [
@@ -428,6 +421,19 @@ class PublerPublisher implements PublisherInterface
 
         $deletedIds = $response->json('deleted_ids') ?? [];
 
+        // Kill-switch: verwijderde Publer iets dat we níét vroegen → alarm.
+        $unexpected = array_values(array_diff($deletedIds, [$publerPostId]));
+        if (! empty($unexpected)) {
+            Log::critical('Publer deletePost: MEER verwijderd dan gevraagd!', [
+                'requested'  => $publerPostId,
+                'unexpected' => $unexpected,
+            ]);
+            app(TelegramService::class)->notify(
+                "🚨 KRITIEK: Publer verwijderde " . count($unexpected) . " post(s) die NIET gevraagd waren bij delete van {$publerPostId}: "
+                . implode(', ', $unexpected)
+            );
+        }
+
         if (empty($deletedIds)) {
             Log::info('Publer deletePost: niets te verwijderen (al weg)', [
                 'publer_post_id' => $publerPostId,
@@ -437,7 +443,7 @@ class PublerPublisher implements PublisherInterface
 
         Log::info('Publer deletePost: verwijderd', [
             'publer_post_id' => $publerPostId,
-            'deleted_count'  => count($deletedIds),
+            'deleted_ids'    => $deletedIds,
         ]);
     }
 

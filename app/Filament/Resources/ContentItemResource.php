@@ -108,7 +108,7 @@ class ContentItemResource extends Resource
                 ->multiple()
                 ->reorderable()
                 ->downloadable()
-                ->maxSize(102400)
+                ->maxSize(204800)
                 ->acceptedFileTypes(['image/*', 'video/*', 'application/pdf'])
                 ->columnSpanFull(),
 
