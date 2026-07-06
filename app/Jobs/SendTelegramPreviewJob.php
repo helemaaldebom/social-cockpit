@@ -2,6 +2,7 @@
 
 namespace App\Jobs;
 
+use App\Enums\ContentStatus;
 use App\Models\ContentItem;
 use App\Services\TelegramService;
 use Illuminate\Bus\Queueable;
@@ -26,10 +27,44 @@ class SendTelegramPreviewJob implements ShouldQueue
     {
         $item = $this->contentItem->fresh();
 
+        // GUARDS — deze job kan dagen in de delayed-queue staan; controleer
+        // dat het item op vuurmoment nog bestaat en nog relevant is. Zonder
+        // deze checks stuurden we previews voor allang verwijderde posts.
+        if (! $item || $item->trashed()) {
+            Log::info('Telegram preview overgeslagen: item verwijderd', [
+                'content_item_id' => $this->contentItem->id,
+            ]);
+            return;
+        }
+
+        if ($item->status !== ContentStatus::Ingepland) {
+            Log::info('Telegram preview overgeslagen: item niet meer ingepland', [
+                'content_item_id' => $item->id,
+                'status'          => $item->status->value,
+            ]);
+            return;
+        }
+
+        if (! $item->scheduled_for || $item->scheduled_for->isPast()) {
+            Log::info('Telegram preview overgeslagen: publicatiemoment al voorbij', [
+                'content_item_id' => $item->id,
+            ]);
+            return;
+        }
+
+        // Item herpland naar later? Dan vuurt deze (oude) job te vroeg —
+        // opnieuw inplannen op het juiste moment en nu niets sturen.
+        if (now()->lt($item->scheduled_for->copy()->subHours(23))) {
+            self::dispatch($item)->delay($item->scheduled_for->copy()->subHours(22));
+            Log::info('Telegram preview her-ingepland (item was verzet)', [
+                'content_item_id' => $item->id,
+                'nieuw_moment'    => $item->scheduled_for->copy()->subHours(22)->toIso8601String(),
+            ]);
+            return;
+        }
+
         $channels = $item->channels->pluck('name')->join(', ');
-        $scheduledFor = $item->scheduled_for
-            ? $item->scheduled_for->setTimezone('Europe/Amsterdam')->format('d-m-Y H:i')
-            : 'Onbekend';
+        $scheduledFor = $item->scheduled_for->setTimezone('Europe/Amsterdam')->format('d-m-Y H:i');
 
         $caption = "📋 <b>Preview — 22u voor publicatie</b>\n\n"
             . "<b>Klant:</b> {$item->client->name}\n"
@@ -53,6 +88,17 @@ class SendTelegramPreviewJob implements ShouldQueue
             foreach ($mediaPaths as $extra) {
                 $this->sendOne($telegram, $extra, '');
             }
+        }
+
+        // Vangnet: media-verzending kan stil falen (bv. video boven Telegram's
+        // limiet). De preview MOET altijd aankomen — val terug op tekst-only.
+        if (! $messageId) {
+            Log::warning('Telegram preview: media-verzending faalde, val terug op tekst', [
+                'content_item_id' => $item->id,
+            ]);
+            $messageId = $telegram->sendMessage(
+                $caption . "\n\n<i>(Media kon niet als bijlage mee — bekijk de media in Publer.)</i>"
+            );
         }
 
         if ($messageId) {
