@@ -48,9 +48,21 @@ class DeletePublerPostsJob implements ShouldQueue
             return;
         }
 
+        // BESCHERMING: verwijder nooit posts die (ook) aan een ánder content
+        // item gekoppeld zijn — dubbel geclaimde IDs wijzen op een koppelfout.
+        $claimedElsewhere = ContentItem::claimedPublerPostIds($this->contentItemId);
+
         $errors = [];
 
         foreach ($this->publerPostIds as $id) {
+            if (in_array($id, $claimedElsewhere, true)) {
+                Log::warning('DeletePublerPostsJob geweigerd: post is ook aan ander item gekoppeld', [
+                    'content_item_id' => $this->contentItemId,
+                    'publer_post_id'  => $id,
+                ]);
+                continue;
+            }
+
             if (! $this->postBelongsToItem((string) $id, $allowedAccountIds)) {
                 Log::warning('DeletePublerPostsJob geweigerd: post hoort niet bij content_item', [
                     'content_item_id' => $this->contentItemId,

@@ -45,6 +45,10 @@ class ResolvePublerPostIdsJob implements ShouldQueue
         $scheduledFor = Carbon::parse($this->scheduledForIso);
         $ids = $publisher->resolvePostIdsPublic($this->publerAccountIds, $scheduledFor, 10, 1500);
 
+        // BESCHERMING: adopteer nooit posts die al bij een ander content item
+        // horen. Alleen "onbeclaimde" posts op dit tijdstip kunnen van ons zijn.
+        $ids = array_values(array_diff($ids, ContentItem::claimedPublerPostIds($this->contentItemId)));
+
         if (count($ids) >= count($this->publerAccountIds)) {
             $item->publer_post_ids = $ids;
             $item->publer_post_id  = $ids[0];
