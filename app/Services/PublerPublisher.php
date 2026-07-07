@@ -303,6 +303,18 @@ class PublerPublisher implements PublisherInterface
         // Update álle post-IDs die we kennen voor dit item (één per netwerk).
         $postIds = $item->publer_post_ids ?: [$publerPostId];
 
+        // BESCHERMING: raak nooit posts aan die (ook) bij een ánder content
+        // item horen — dubbel geclaimde IDs wijzen op een koppelfout.
+        $claimedElsewhere = ContentItem::claimedPublerPostIds($item->id);
+        $postIds = array_values(array_diff($postIds, $claimedElsewhere));
+
+        if (empty($postIds)) {
+            Log::warning('Publer updatePost: alle post-IDs horen bij andere items — niets geüpdatet', [
+                'content_item_id' => $item->id,
+            ]);
+            return;
+        }
+
         // HARDE GUARD tegen cross-client-vervuiling: haal voor elk post-ID de
         // huidige Publer-status op en weiger updaten als het account_id niet
         // bij dit content_item's klant hoort. Voorkomt dat een fout-opgeslagen

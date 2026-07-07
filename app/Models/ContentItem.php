@@ -70,6 +70,25 @@ class ContentItem extends Model
     }
 
     /**
+     * Alle Publer post-IDs die al aan (andere) content items zijn gekoppeld —
+     * inclusief soft-deleted items. Wordt gebruikt om te voorkomen dat een
+     * nieuw item per ongeluk bestaande Publer-posts "adopteert" en die later
+     * zou kunnen overschrijven of verwijderen.
+     */
+    public static function claimedPublerPostIds(?int $exceptItemId = null): array
+    {
+        return static::withTrashed()
+            ->when($exceptItemId, fn ($q) => $q->where('id', '!=', $exceptItemId))
+            ->whereNotNull('publer_post_ids')
+            ->pluck('publer_post_ids')
+            ->flatten()
+            ->filter()
+            ->unique()
+            ->values()
+            ->all();
+    }
+
+    /**
      * Gecombineerde lijst van media-paths (zowel media_path als media_paths).
      * Eerst is doorgaans de "hoofdmedia". Lege strings/nulls worden gefilterd.
      */

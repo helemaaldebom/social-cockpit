@@ -5,6 +5,7 @@ namespace App\Jobs;
 use App\Contracts\PublisherInterface;
 use App\Enums\ContentStatus;
 use App\Models\ContentItem;
+use App\Services\PublerPublisher;
 use App\Services\TelegramService;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
@@ -21,10 +22,14 @@ class SchedulePostToPublerJob implements ShouldQueue
     public int $tries = 3;
     public int $backoff = 120;
 
+    /** Max. aantal keer dat we doorschuiven naar een volgend slot bij conflicten. */
+    private const MAX_CONFLICT_HOPS = 8;
+
     public function __construct(
         public readonly ContentItem $contentItem,
         public readonly array $publerAccountIds,
-        public readonly string $scheduledFor
+        public readonly string $scheduledFor,
+        public readonly int $conflictHops = 0
     ) {}
 
     public function handle(PublisherInterface $publisher, TelegramService $telegram): void
@@ -41,6 +46,38 @@ class SchedulePostToPublerJob implements ShouldQueue
         }
 
         $scheduledAt = Carbon::parse($this->scheduledFor, 'Europe/Amsterdam');
+
+        // BESCHERMING BESTAANDE POSTS: staat er in Publer al iets op dit
+        // tijdstip voor deze accounts (bv. handmatig ingepland, buiten de
+        // Cockpit om)? Dan schuiven we DIT item door naar het volgende vrije
+        // slot — we vervangen of verwijderen nooit iets dat er al staat.
+        $existing = app(PublerPublisher::class)
+            ->resolvePostIdsPublic($this->publerAccountIds, $scheduledAt, 1, 0);
+
+        if (! empty($existing)) {
+            if ($this->conflictHops >= self::MAX_CONFLICT_HOPS) {
+                $item->changeStatus(ContentStatus::Mislukt, 'Geen vrij slot gevonden (alle kandidaten bezet in Publer).');
+                $telegram->notify("⚠️ Content item #{$item->id} kon niet ingepland worden: alle kandidaat-slots zijn al bezet in Publer.");
+                return;
+            }
+
+            $next = $item->client->nextFreeSlot($scheduledAt->copy()->addMinute());
+
+            if (! $next) {
+                $item->changeStatus(ContentStatus::Mislukt, 'Geen vrij slot gevonden na conflict in Publer.');
+                $telegram->notify("⚠️ Content item #{$item->id} kon niet ingepland worden: geen vrij slot gevonden.");
+                return;
+            }
+
+            Log::info('SchedulePostToPubler: slot bezet in Publer, doorgeschoven', [
+                'content_item_id' => $item->id,
+                'bezet_slot'      => $scheduledAt->toIso8601String(),
+                'nieuw_slot'      => $next->toIso8601String(),
+            ]);
+
+            self::dispatch($item, $this->publerAccountIds, $next->toIso8601String(), $this->conflictHops + 1);
+            return;
+        }
 
         // schedulePost() returnt direct met job_id. Polling voor de echte
         // per-netwerk post_ids gebeurt in een aparte ResolvePublerPostIdsJob,
