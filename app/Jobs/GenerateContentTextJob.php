@@ -28,8 +28,11 @@ class GenerateContentTextJob implements ShouldQueue
     {
         $item = $this->contentItem->fresh();
 
-        // Zet terug naar concept zodat de state machine door kan
-        if (! in_array($item->status, [ContentStatus::Concept, ContentStatus::Mislukt])) {
+        // Zet terug naar concept zodat de state machine door kan. Óók vanaf
+        // "mislukt": zonder deze reset gooit changeStatus(Gegenereerd) straks
+        // een InvalidStatusTransition (mislukt → gegenereerd is niet geldig),
+        // waardoor een retry na een OpenAI-storing eeuwig bleef falen.
+        if ($item->status !== ContentStatus::Concept) {
             $item->status = ContentStatus::Concept;
             $item->save();
         }
