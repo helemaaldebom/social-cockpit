@@ -60,6 +60,28 @@ naar het eerstvolgende dinsdag/vrijdag 07:30-slot en plant in via Publer.
 `SchedulePostToPublerJob` triggert `SendTelegramPreviewJob` 24u voor publicatie.
 Replies in Telegram refinen de tekst en updaten de bestaande Publer-post.
 
+## OpenAI-tokenbeheer
+
+Alle OpenAI-calls zitten in `app/Services/OpenAiService.php` (generate + refine,
+aangeroepen vanuit `GenerateContentTextJob` en `TelegramWebhookController`).
+
+Tokenoptimalisaties:
+- Few-shot voorbeelden per generatie-call begrensd via `OPENAI_MAX_EXAMPLES`
+  (default 4; was hardcoded 15).
+- `refineText` (Telegram-edits) stuurt géén voorbeeldposts meer mee — de te
+  bewerken tekst toont de stijl al. Trade-off: verfijning leunt op de
+  tone-of-voice prompt + bestaande tekst; in de praktijk geen kwaliteitsverschil.
+- Model configureerbaar via `OPENAI_MODEL` (default `gpt-4o`; `gpt-4o-mini`
+  is ~15x goedkoper en te proberen zonder code-wijziging).
+- Output begrensd via `OPENAI_MAX_OUTPUT_TOKENS` (default 600).
+- Elk verzoek logt tokenverbruik naar laravel.log als
+  `OpenAI tokenverbruik {purpose, content_item_id, model, prompt_tokens,
+  completion_tokens, total_tokens}` — géén promptinhoud of keys. Monitoren:
+  `grep "OpenAI tokenverbruik" storage/logs/laravel.log`.
+
+De tone-of-voice prompt per klant (bv. ZTS) is bewust NIET ingekort: dat is
+het kwaliteitsanker voor de schrijfstijl.
+
 ## Tests
 
 `php artisan test` — 16 tests, SQLite in-memory. Covert: status transitions,

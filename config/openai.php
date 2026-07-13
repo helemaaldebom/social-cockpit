@@ -46,4 +46,24 @@ return [
     */
 
     'request_timeout' => env('OPENAI_REQUEST_TIMEOUT', 30),
+
+    /*
+    |--------------------------------------------------------------------------
+    | Model & tokenbeheer (Social Cockpit)
+    |--------------------------------------------------------------------------
+    |
+    | model: het chatmodel voor tekstgeneratie en -verfijning. gpt-4o is de
+    | kwaliteitsdefault; gpt-4o-mini is ~15x goedkoper en een prima optie om
+    | te testen via OPENAI_MODEL zonder code-wijziging.
+    |
+    | max_output_tokens: bovengrens per antwoord. Social posts zijn ~300-500
+    | tokens; 600 laat ruimte zonder onbeperkt te betalen voor uitloop.
+    |
+    | max_examples: aantal few-shot voorbeeldposts per generatie-call. De
+    | tone-of-voice prompt bevat zelf al stijlregels en een voorbeeld, dus
+    | een handvol extra voorbeelden volstaat.
+    */
+    'model' => env('OPENAI_MODEL', 'gpt-4o'),
+    'max_output_tokens' => (int) env('OPENAI_MAX_OUTPUT_TOKENS', 600),
+    'max_examples' => (int) env('OPENAI_MAX_EXAMPLES', 4),
 ];
