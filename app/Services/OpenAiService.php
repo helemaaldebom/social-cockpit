@@ -10,46 +10,73 @@ class OpenAiService
 {
     public function generateText(ContentItem $item): string
     {
-        $messages = $this->buildMessages($item);
+        // Generatie: tone-of-voice + een beperkt aantal few-shot voorbeelden.
+        $messages = $this->buildMessages($item, withExamples: true);
         $messages[] = ['role' => 'user', 'content' => $item->brief];
 
-        $response = OpenAI::chat()->create([
-            'model' => 'gpt-4o',
-            'messages' => $messages,
-            'max_tokens' => 600,
-        ]);
-
-        return $response->choices[0]->message->content ?? '';
+        return $this->chat($messages, $item, 'generate');
     }
 
     public function refineText(ContentItem $item, string $instruction): string
     {
-        $messages = $this->buildMessages($item);
+        // Verfijning: GEEN voorbeeldposts meesturen — de huidige tekst toont de
+        // stijl al en is zelf het onderwerp van de bewerking. Dit scheelt
+        // duizenden prompt-tokens per Telegram-edit zonder kwaliteitsverlies.
+        $messages = $this->buildMessages($item, withExamples: false);
         $messages[] = [
             'role' => 'user',
             'content' => "Huidige tekst:\n{$item->generated_text}\n\nPas deze tekst aan op basis van de volgende instructie:\n{$instruction}",
         ];
 
+        return $this->chat($messages, $item, 'refine');
+    }
+
+    /**
+     * Voer de chat-call uit en log het tokenverbruik (geen inhoud, geen keys).
+     */
+    private function chat(array $messages, ContentItem $item, string $purpose): string
+    {
+        $model = config('openai.model', 'gpt-4o');
+
         $response = OpenAI::chat()->create([
-            'model' => 'gpt-4o',
+            'model' => $model,
             'messages' => $messages,
-            'max_tokens' => 600,
+            'max_tokens' => (int) config('openai.max_output_tokens', 600),
+        ]);
+
+        Log::info('OpenAI tokenverbruik', [
+            'purpose'           => $purpose,
+            'content_item_id'   => $item->id,
+            'model'             => $model,
+            'prompt_tokens'     => $response->usage->promptTokens ?? null,
+            'completion_tokens' => $response->usage->completionTokens ?? null,
+            'total_tokens'      => $response->usage->totalTokens ?? null,
         ]);
 
         return $response->choices[0]->message->content ?? '';
     }
 
     /**
-     * Bouw de berichtenreeks op met systeemprompt en few-shot voorbeelden.
-     * Voorbeeldposts worden als user/assistant paren meegegeven zodat OpenAI
-     * de schrijfstijl direct overneemt.
+     * Bouw de berichtenreeks op met systeemprompt en (optioneel) few-shot
+     * voorbeelden. Voorbeeldposts worden als user/assistant paren meegegeven
+     * zodat OpenAI de schrijfstijl direct overneemt.
      */
-    private function buildMessages(ContentItem $item): array
+    private function buildMessages(ContentItem $item, bool $withExamples = true): array
     {
         $client = $item->client;
 
         $systemPrompt = $client->tone_of_voice
             ?? 'Je bent een social media copywriter. Schrijf een engaging social media post.';
+
+        $messages = [
+            ['role' => 'system', 'content' => $systemPrompt],
+        ];
+
+        if (! $withExamples) {
+            return $messages;
+        }
+
+        $maxExamples = (int) config('openai.max_examples', 4);
 
         // Haal de actieve kanalen op om de juiste voorbeelden te filteren
         $networks = $item->channels->pluck('network')
@@ -60,17 +87,13 @@ class OpenAiService
         // Laad voorbeeldposts — filter op netwerk als er kanalen gekoppeld zijn
         $examples = $client->examples()
             ->when($networks->isNotEmpty(), fn ($q) => $q->whereIn('network', $networks))
-            ->limit(15)
+            ->limit($maxExamples)
             ->get();
 
         // Als er geen netwerk-specifieke voorbeelden zijn, pak alle voorbeelden
         if ($examples->isEmpty()) {
-            $examples = $client->examples()->limit(15)->get();
+            $examples = $client->examples()->limit($maxExamples)->get();
         }
-
-        $messages = [
-            ['role' => 'system', 'content' => $systemPrompt],
-        ];
 
         if ($examples->isNotEmpty()) {
             // Voeg instructie toe om de stijl van de voorbeelden over te nemen
@@ -81,7 +104,6 @@ class OpenAiService
 
             // Few-shot: elk voorbeeld als user/assistant paar
             foreach ($examples as $example) {
-                $label = $example->label ? "[{$example->label}]" : '[Voorbeeldpost]';
                 $messages[] = [
                     'role' => 'user',
                     'content' => "Schrijf een post in de stijl van {$client->name}.",
