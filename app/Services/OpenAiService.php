@@ -53,7 +53,21 @@ class OpenAiService
             'total_tokens'      => $response->usage->totalTokens ?? null,
         ]);
 
-        return $response->choices[0]->message->content ?? '';
+        return $this->stripMarkdownEmphasis($response->choices[0]->message->content ?? '');
+    }
+
+    /**
+     * Vangnet: verwijder markdown-bold/cursief (asterisks) uit AI-output.
+     * Social platforms renderen geen markdown — sterretjes verschijnen daar
+     * letterlijk in de post. De prompt verbiedt ze al; dit garandeert het.
+     */
+    private function stripMarkdownEmphasis(string $text): string
+    {
+        $text = str_replace('**', '', $text);
+        // Enkel-asterisk cursief om een woord/zinsdeel (geen regels die met * beginnen — dat zijn opsommingen)
+        $text = preg_replace('/(?<![\w*])\*([^*\n]+)\*(?![\w*])/u', '$1', $text);
+
+        return $text;
     }
 
     /**

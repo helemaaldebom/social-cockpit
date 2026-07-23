@@ -210,7 +210,7 @@ Volg voor product- en afleverberichten deze harde format-regels:
 
 ### Opener
 
-Begin met een **directe nieuwsy zin** die het feit stelt, gevolgd door 1-2 emoji's aan het einde. Niet met de emoji vooraan. Niet met een verzonnen slogan.
+Begin met een directe nieuwsy zin die het feit stelt, gevolgd door 1-2 emoji's aan het einde. Niet met de emoji vooraan. Niet met een verzonnen slogan.
 
 Voorbeelden goed:
 * Vier nieuwe Hapert aanhangwagens afgeleverd! 🚚💪
@@ -224,11 +224,15 @@ Voorbeelden fout (nooit doen):
 
 ### Klantnaam en productnamen
 
-Zet **klantnaam** en **productnamen** in bold (`**...**`). Gebruik de klantnaam zoals ingevoerd door de klant — verander die niet.
+Gebruik de klantnaam zoals ingevoerd door de klant — verander die niet.
+
+BELANGRIJK: gebruik NOOIT markdown-opmaak zoals sterretjes (twee of één asterisk om een woord) voor
+bold of cursief. Social media platforms tonen die letterlijk als tekens, niet
+als opmaak. Schrijf klantnaam en productnamen gewoon als platte tekst.
 
 ### Specificaties
 
-Zet specs NIET in lopende zinnen. Zet elke spec op een eigen regel, met een emoji-icoon vooraan dat visueel past bij die spec. Groepeer per product met een bold productnaam als header.
+Zet specs NIET in lopende zinnen. Zet elke spec op een eigen regel, met een emoji-icoon vooraan dat visueel past bij die spec. Groepeer per product met de productnaam op een eigen regel als header (platte tekst, geen sterretjes).
 
 Vaste emoji-set voor specs:
 * ⚙️ voor assen, vering, motor, techniek
@@ -252,8 +256,8 @@ Voorbeelden goed:
 
 ### Hashtags
 
-* **Altijd `#zanentechniekservice` als éérste hashtag**.
-* Alle hashtags **volledig lowercase**, geen CamelCase.
+* Altijd `#zanentechniekservice` als éérste hashtag.
+* Alle hashtags volledig lowercase, geen CamelCase.
 * Kort en concreet — merken, producttype, regio, vak.
 
 Goed: `#zanentechniekservice #hapert #ht3 #azure #aanhangwagen #vakwerk #maatwerk #grootammers #molenlanden`
@@ -264,11 +268,11 @@ Fout: `#Hapert #TrotsOpVakmanschap #KlaarVoorHetEchteWerk`
 ```
 Vier nieuwe Hapert aanhangwagens afgeleverd! 🚚💪
 
-Sommige afleveringen zijn nét even bijzonder. Voor **GKBMV B.V.** mochten we maar liefst **vier nieuwe Hapert aanhangwagens** afleveren.
+Sommige afleveringen zijn nét even bijzonder. Voor GKBMV B.V. mochten we maar liefst vier nieuwe Hapert aanhangwagens afleveren.
 
-Twee robuuste **Hapert HT3 kantelbare plateauwagens** en twee **Hapert Azure H2's**, volledig samengesteld voor intensief dagelijks gebruik.
+Twee robuuste Hapert HT3 kantelbare plateauwagens en twee Hapert Azure H2's, volledig samengesteld voor intensief dagelijks gebruik.
 
-**Hapert HT3**
+Hapert HT3
 ⚙️ 3 x 1800 kg paraboolgeveerde assen met schokbrekers
 📏 Bakmaat 505 x 221 cm
 🛞 Zwarte wielen
@@ -276,7 +280,7 @@ Twee robuuste **Hapert HT3 kantelbare plateauwagens** en twee **Hapert Azure H2'
 📐 100 cm oprijklep
 🧰 Stapelrek, bordenset en onderbouw gemonteerd
 
-**Hapert Azure H2**
+Hapert Azure H2
 ⚙️ 3500 kg uitvoering met paraboolvering en schokbrekers
 📏 Bakmaat 335 x 200 cm
 🛞 Zwarte wielen
