@@ -65,6 +65,26 @@ class OpenAiTokenUsageTest extends TestCase
         });
     }
 
+    public function test_asterisks_are_stripped_from_output(): void
+    {
+        OpenAI::fake([CreateResponse::fake([
+            'choices' => [[
+                'index' => 0,
+                'message' => ['role' => 'assistant', 'content' => "Titel met **Paraboolvering** en *cursief* woord.\n* opsomming blijft staan"],
+                'finish_reason' => 'stop',
+            ]],
+        ])]);
+
+        $item = $this->makeItemWithExamples(0);
+        $result = app(OpenAiService::class)->generateText($item);
+
+        $this->assertStringNotContainsString('**', $result);
+        $this->assertStringContainsString('Paraboolvering', $result);
+        $this->assertStringContainsString('cursief', $result);
+        $this->assertStringNotContainsString('*cursief*', $result);
+        $this->assertStringContainsString("\n* opsomming blijft staan", $result);
+    }
+
     public function test_model_is_configurable(): void
     {
         config(['openai.model' => 'gpt-4o-mini']);
