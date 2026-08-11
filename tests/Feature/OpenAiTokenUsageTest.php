@@ -46,8 +46,8 @@ class OpenAiTokenUsageTest extends TestCase
         app(OpenAiService::class)->generateText($item);
 
         OpenAI::assertSent(\OpenAI\Resources\Chat::class, function (string $method, array $parameters) {
-            // 1 system prompt + 1 voorbeeld-instructie + 4 × (user+assistant) + 1 brief = 11
-            return count($parameters['messages']) === 11
+            // 2 system (tone-of-voice + facts-guard) + 1 voorbeeld-instructie + 4 × (user+assistant) + 1 brief = 12
+            return count($parameters['messages']) === 12
                 && $parameters['max_tokens'] === 600;
         });
     }
@@ -60,8 +60,8 @@ class OpenAiTokenUsageTest extends TestCase
         app(OpenAiService::class)->refineText($item, 'Maak korter.');
 
         OpenAI::assertSent(\OpenAI\Resources\Chat::class, function (string $method, array $parameters) {
-            // Alleen system prompt + de bewerkingsopdracht = 2 berichten
-            return count($parameters['messages']) === 2;
+            // 2 system (tone-of-voice + facts-guard) + de bewerkingsopdracht = 3 berichten
+            return count($parameters['messages']) === 3;
         });
     }
 

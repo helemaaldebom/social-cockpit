@@ -66,4 +66,7 @@ return [
     'model' => env('OPENAI_MODEL', 'gpt-4o'),
     'max_output_tokens' => (int) env('OPENAI_MAX_OUTPUT_TOKENS', 600),
     'max_examples' => (int) env('OPENAI_MAX_EXAMPLES', 4),
+
+    // Lager = feitelijker, minder verzinnen. 0.4 is bewust conservatief.
+    'temperature' => (float) env('OPENAI_TEMPERATURE', 0.4),
 ];
