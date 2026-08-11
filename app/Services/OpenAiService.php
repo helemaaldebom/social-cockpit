@@ -42,6 +42,10 @@ class OpenAiService
             'model' => $model,
             'messages' => $messages,
             'max_tokens' => (int) config('openai.max_output_tokens', 600),
+            // Lagere temperatuur = minder "creatief invullen" van ontbrekende
+            // details. Samen met de anti-fabricatie systeemregel houdt dit de
+            // output dicht bij de feiten uit de klantinzending.
+            'temperature' => (float) config('openai.temperature', 0.4),
         ]);
 
         Log::info('OpenAI tokenverbruik', [
@@ -82,8 +86,19 @@ class OpenAiService
         $systemPrompt = $client->tone_of_voice
             ?? 'Je bent een social media copywriter. Schrijf een engaging social media post.';
 
+        // Harde anti-fabricatie regel, altijd meegestuurd los van de klantprompt.
+        // Dit kan niet per ongeluk uit een klant-tone-of-voice verdwijnen.
+        $factsGuard = 'STRIKTE REGEL: gebruik uitsluitend feiten die letterlijk in '
+            . 'de aangeleverde tekst van de klant staan. Verzin NOOIT bedrijfsnamen, '
+            . 'klantnamen, plaatsnamen, specificaties, maten, gewichten, aantallen, '
+            . 'merken, prijzen of wat er vervoerd/geleverd/gerepareerd is. Staat iets '
+            . 'niet in de klanttekst, dan schrijf je het niet. Is de input kort, dan '
+            . 'is de post kort. Een korte kloppende post is altijd beter dan een langere '
+            . 'met verzonnen details.';
+
         $messages = [
             ['role' => 'system', 'content' => $systemPrompt],
+            ['role' => 'system', 'content' => $factsGuard],
         ];
 
         if (! $withExamples) {
