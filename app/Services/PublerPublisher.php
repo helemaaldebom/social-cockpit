@@ -20,8 +20,8 @@ class PublerPublisher implements PublisherInterface
 
     public function __construct()
     {
-        $this->apiKey = config('services.publer.api_key');
-        $this->workspaceId = config('services.publer.workspace_id');
+        $this->apiKey = (string) config('services.publer.api_key');
+        $this->workspaceId = (string) config('services.publer.workspace_id');
     }
 
     private function headers(): array
@@ -169,6 +169,50 @@ class PublerPublisher implements PublisherInterface
     public function resolvePostIdsPublic(array $accountIds, CarbonInterface $scheduledFor, int $maxAttempts = 10, int $sleepMs = 1500): array
     {
         return $this->resolvePostIds($accountIds, $scheduledFor, $maxAttempts, $sleepMs);
+    }
+
+    /**
+     * Geeft de geplande publicatietijden (UTC epoch-seconden) van ALLE posts
+     * die op deze accounts in Publer staan — ongeacht of ze via de Cockpit of
+     * handmatig zijn ingepland. Bron van waarheid voor slot-bezetting.
+     * Faalt zacht (lege array) zodat een Publer-storing het plannen niet blokkeert.
+     */
+    public function scheduledTimestampsForAccounts(array $accountIds): array
+    {
+        if (empty($accountIds) || $this->apiKey === '') {
+            return [];
+        }
+
+        try {
+            $response = Http::withHeaders($this->headers())
+                ->get(self::BASE_URL . '/posts', ['state' => 'scheduled']);
+
+            if (! $response->successful()) {
+                return [];
+            }
+
+            $posts = $response->json('posts') ?? $response->json('data') ?? [];
+            $timestamps = [];
+
+            foreach ((array) $posts as $post) {
+                if (! in_array($post['account_id'] ?? null, $accountIds, true)) {
+                    continue;
+                }
+                if (empty($post['scheduled_at'])) {
+                    continue;
+                }
+                try {
+                    $timestamps[] = Carbon::parse($post['scheduled_at'])->utc()->getTimestamp();
+                } catch (\Throwable) {
+                    // skip
+                }
+            }
+
+            return array_values(array_unique($timestamps));
+        } catch (\Throwable $e) {
+            Log::warning('Publer scheduledTimestampsForAccounts faalde', ['error' => $e->getMessage()]);
+            return [];
+        }
     }
 
     /**

@@ -51,10 +51,15 @@ class SchedulePostToPublerJob implements ShouldQueue
         // tijdstip voor deze accounts (bv. handmatig ingepland, buiten de
         // Cockpit om)? Dan schuiven we DIT item door naar het volgende vrije
         // slot — we vervangen of verwijderen nooit iets dat er al staat.
-        $existing = app(PublerPublisher::class)
-            ->resolvePostIdsPublic($this->publerAccountIds, $scheduledAt, 1, 0);
+        // Vergelijk binnen ±30 min i.p.v. exacte timestamp: handmatige Publer-
+        // posts staan vaak op 07:30:18 i.p.v. precies 07:30:00.
+        $candidateTs = $scheduledAt->copy()->utc()->getTimestamp();
+        $occupied = false;
+        foreach (app(PublerPublisher::class)->scheduledTimestampsForAccounts($this->publerAccountIds) as $ts) {
+            if (abs($ts - $candidateTs) <= 1800) { $occupied = true; break; }
+        }
 
-        if (! empty($existing)) {
+        if ($occupied) {
             if ($this->conflictHops >= self::MAX_CONFLICT_HOPS) {
                 $item->changeStatus(ContentStatus::Mislukt, 'Geen vrij slot gevonden (alle kandidaten bezet in Publer).');
                 $telegram->notify("⚠️ Content item #{$item->id} kon niet ingepland worden: alle kandidaat-slots zijn al bezet in Publer.");

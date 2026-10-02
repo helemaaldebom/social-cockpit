@@ -61,6 +61,13 @@ class Client extends Model
 
         $cursor = $after ?? Carbon::now();
 
+        // Bezette slots uit Publer zelf (ook handmatig ingeplande posts die
+        // niet in de Cockpit staan). Eén keer ophalen voor de hele zoekloop.
+        $publerAccountIds = $this->channels()
+            ->whereNotNull('publer_account_id')->pluck('publer_account_id')->all();
+        $publerTimestamps = app(\App\Services\PublerPublisher::class)
+            ->scheduledTimestampsForAccounts($publerAccountIds);
+
         for ($i = 0; $i < 30; $i++) {
             $candidate = $slots
                 ->map(fn (PublishSlot $slot) => $slot->nextOccurrence($cursor))
@@ -74,7 +81,7 @@ class Client extends Model
 
             $utc = $candidate->copy()->utc();
 
-            $taken = ContentItem::where('client_id', $this->id)
+            $takenInDb = ContentItem::where('client_id', $this->id)
                 ->whereIn('status', ['ingepland', 'geplaatst'])
                 ->whereBetween('scheduled_for', [
                     $utc->copy()->subMinutes(30),
@@ -82,7 +89,15 @@ class Client extends Model
                 ])
                 ->exists();
 
-            if (! $taken) {
+            // Bezet volgens Publer? ±30 min (handmatige posts staan vaak op
+            // 07:30:18 i.p.v. exact 07:30:00).
+            $candidateTs = $utc->getTimestamp();
+            $takenInPubler = false;
+            foreach ($publerTimestamps as $ts) {
+                if (abs($ts - $candidateTs) <= 1800) { $takenInPubler = true; break; }
+            }
+
+            if (! $takenInDb && ! $takenInPubler) {
                 return $candidate;
             }
 
