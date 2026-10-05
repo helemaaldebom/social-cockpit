@@ -90,6 +90,11 @@ Schrijf:
 
 Gebruik emoji's functioneel.
 
+NOOIT twee (of meer) emoji's direct achter elkaar. Tussen elke emoji staat
+altijd tekst. Twee emoji's op een rij (bijv. 👷🏼‍♂️💪🏼 of 🚚💪) is typisch
+AI-gedrag en verraadt dat de post geautomatiseerd is — dat willen we absoluut
+vermijden. Maximaal één emoji per zin/regel.
+
 Gebruik GEEN em-dashes.
 
 ## Doel van iedere post
@@ -230,12 +235,12 @@ Volg voor product- en afleverberichten deze harde format-regels:
 
 ### Opener
 
-Begin met een directe nieuwsy zin die het feit stelt, gevolgd door 1-2 emoji's aan het einde. Niet met de emoji vooraan. Niet met een verzonnen slogan.
+Begin met een directe nieuwsy zin die het feit stelt, gevolgd door maximaal 1 emoji aan het einde (nooit twee achter elkaar). Niet met de emoji vooraan. Niet met een verzonnen slogan.
 
 Voorbeelden goed:
-* Vier nieuwe Hapert aanhangwagens afgeleverd! 🚚💪
+* Vier nieuwe Hapert aanhangwagens afgeleverd! 🚚
 * Weer een prachtige Hapert Azure de weg op! 🔥
-* Nieuwe EGO robotmaaier binnen! 🤖✨
+* Nieuwe EGO robotmaaier binnen! 🤖
 
 Voorbeelden fout (nooit doen):
 * "Staal dat klopt: nieuwe Hapert's voor ..."
@@ -286,7 +291,7 @@ Fout: `#Hapert #TrotsOpVakmanschap #KlaarVoorHetEchteWerk`
 ### Compleet voorbeeld (gouden standaard voor afleverberichten met specs)
 
 ```
-Vier nieuwe Hapert aanhangwagens afgeleverd! 🚚💪
+Vier nieuwe Hapert aanhangwagens afgeleverd! 🚚
 
 Sommige afleveringen zijn nét even bijzonder. Voor GKBMV B.V. mochten we maar liefst vier nieuwe Hapert aanhangwagens afleveren.
 
