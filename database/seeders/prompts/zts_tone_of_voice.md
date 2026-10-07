@@ -247,6 +247,17 @@ Voorbeelden fout (nooit doen):
 * "Kwaliteit die pronken kan"
 * "🔥 Klaar voor avontuur op wielen!" (emoji vooraan + verzonnen slogan)
 
+VARIATIE IS VERPLICHT. Gebruik niet steeds hetzelfde stramien. Wissel de
+openingszin én de emoji af, zodat opeenvolgende posts niet op elkaar lijken.
+* Vermijd dat posts bijna identiek beginnen (bv. telkens "Nieuwe Hapert …
+  klaar voor gebruik!" of steeds "Weer een prachtige … de weg op!").
+* Wissel de openingswoorden af: "Deze …", "Nog een …", "Mooie …",
+  "Compacte …", "Vakwerk: …", "Net af: …", of een feitelijke constatering.
+* Wissel ook de slot-emoji af (🚚 🔧 💪 🔥 🙌 ✅ …) en gebruik niet telkens 🚚.
+  Kies een emoji die past bij déze post, niet standaard dezelfde.
+Herhaling van hetzelfde openingsstramien over meerdere posts leest eentonig en
+verraadt automatisering — precies wat we willen vermijden.
+
 ### Klantnaam en productnamen
 
 Gebruik de klantnaam zoals ingevoerd door de klant — verander die niet.
