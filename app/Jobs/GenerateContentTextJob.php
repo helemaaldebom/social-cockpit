@@ -82,7 +82,13 @@ class GenerateContentTextJob implements ShouldQueue
             return false;
         }
 
-        $slot = $client->nextFreeSlot();
+        // Is er in het formulier een expliciete publicatietijd gekozen? Dan is
+        // die leidend (ook voor klanten zonder actief slot, bv. buro_deBom of
+        // Bas Romeijn). Anders valt het terug op het eerstvolgende vrije slot.
+        $slot = ($item->scheduled_for && $item->scheduled_for->isFuture())
+            ? $item->scheduled_for->copy()->setTimezone('Europe/Amsterdam')
+            : $client->nextFreeSlot();
+
         if (! $slot) {
             Log::info('Auto-schedule overgeslagen: geen vrij slot gevonden', ['content_item_id' => $item->id]);
             return false;

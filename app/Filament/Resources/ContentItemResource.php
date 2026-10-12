@@ -7,6 +7,7 @@ use App\Filament\Resources\ContentItemResource\Pages;
 use App\Jobs\GenerateContentTextJob;
 use App\Jobs\SchedulePostToPublerJob;
 use App\Models\Channel;
+use App\Models\Client;
 use App\Models\ContentItem;
 use App\Models\PublishSlot;
 use Filament\Forms;
@@ -80,6 +81,22 @@ class ContentItemResource extends Resource
                     }
                 }),
 
+            // Dezelfde inzending naar meerdere klanten posten. Per extra klant
+            // wordt een eigen content-item aangemaakt dat in díé klant z'n
+            // tone-of-voice wordt gegenereerd (zelfde brief/media als bron).
+            Forms\Components\Select::make('also_post_to_client_ids')
+                ->label('Ook posten naar (andere klanten)')
+                ->helperText('Maakt per aangevinkte klant een eigen post, gegenereerd in die klant z\'n tone-of-voice. Zelfde brief en media. Wordt ingepland op de gekozen datum/tijd hieronder.')
+                ->multiple()
+                ->options(fn (Get $get) => Client::query()
+                    ->where('active', true)
+                    ->when($get('client_id'), fn ($q, $id) => $q->whereKeyNot($id))
+                    ->orderBy('name')
+                    ->pluck('name', 'id'))
+                ->dehydrated(false)
+                ->visibleOn('create')
+                ->columnSpanFull(),
+
             Forms\Components\TextInput::make('title')
                 ->label('Titel')
                 ->required(),
@@ -128,7 +145,10 @@ class ContentItemResource extends Resource
             Forms\Components\DateTimePicker::make('scheduled_for')
                 ->label('Gepland op')
                 ->timezone('Europe/Amsterdam')
-                ->seconds(false),
+                ->seconds(false)
+                // Bij aanmaken is de publicatietijd leidend (ook voor klanten
+                // zonder actief slot), dus verplicht op de create-pagina.
+                ->required(fn (string $operation) => $operation === 'create'),
         ]);
     }
 
