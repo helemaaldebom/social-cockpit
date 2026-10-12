@@ -216,6 +216,71 @@ class PublerPublisher implements PublisherInterface
     }
 
     /**
+     * Geeft de VOLLEDIGE scheduled posts (genormaliseerd) voor deze accounts.
+     * Gebruikt door SyncPublerPostsJob om handmatig in Publer ingeplande posts
+     * automatisch als Cockpit-item te importeren. Faalt zacht (lege array).
+     *
+     * Elk item: id, account_id, group_id, text, type, scheduled_at (Carbon UTC),
+     * scheduled_ts (epoch), media (array van remote CDN-urls).
+     */
+    public function scheduledPostsForAccounts(array $accountIds): array
+    {
+        if (empty($accountIds) || $this->apiKey === '') {
+            return [];
+        }
+
+        try {
+            $response = Http::withHeaders($this->headers())
+                ->get(self::BASE_URL . '/posts', ['state' => 'scheduled']);
+
+            if (! $response->successful()) {
+                return [];
+            }
+
+            $posts = $response->json('posts') ?? $response->json('data') ?? [];
+            $out = [];
+
+            foreach ((array) $posts as $post) {
+                $accountId = $post['account_id'] ?? null;
+                if (! in_array($accountId, $accountIds, true)) {
+                    continue;
+                }
+                if (empty($post['scheduled_at']) || empty($post['id'])) {
+                    continue;
+                }
+                try {
+                    $when = Carbon::parse($post['scheduled_at'])->utc();
+                } catch (\Throwable) {
+                    continue;
+                }
+
+                $media = [];
+                foreach ((array) ($post['media'] ?? []) as $m) {
+                    if (! empty($m['path'])) {
+                        $media[] = $m['path'];
+                    }
+                }
+
+                $out[] = [
+                    'id'           => (string) $post['id'],
+                    'account_id'   => (string) $accountId,
+                    'group_id'     => (string) ($post['group_id'] ?? ''),
+                    'text'         => (string) ($post['text'] ?? ''),
+                    'type'         => (string) ($post['type'] ?? 'status'),
+                    'scheduled_at' => $when,
+                    'scheduled_ts' => $when->getTimestamp(),
+                    'media'        => $media,
+                ];
+            }
+
+            return $out;
+        } catch (\Throwable $e) {
+            Log::warning('Publer scheduledPostsForAccounts faalde', ['error' => $e->getMessage()]);
+            return [];
+        }
+    }
+
+    /**
      * Haalt de scheduled posts op en filtert client-side op de specifieke
      * combinatie account_id ∈ $accountIds én scheduled_at == $scheduledFor.
      *
