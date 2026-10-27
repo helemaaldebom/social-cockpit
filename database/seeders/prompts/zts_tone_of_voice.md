@@ -258,6 +258,17 @@ openingszin én de emoji af, zodat opeenvolgende posts niet op elkaar lijken.
 Herhaling van hetzelfde openingsstramien over meerdere posts leest eentonig en
 verraadt automatisering — precies wat we willen vermijden.
 
+GEEN ECHO BINNEN DE POST. De eerste zin van de bodytekst mag de openingszin
+niet herhalen. Begin de body dus niet opnieuw met de productnaam + "is klaar
+voor" / "is uitgerust voor" als de opener dat al zei. Kies een andere
+invalshoek: de klant, het gebruik, of meteen een concrete eigenschap.
+* Fout: opener "Deze Hapert Cobalt HM2 is er helemaal klaar voor! 🚚" gevolgd
+  door body "Deze Hapert Cobalt HM2 is helemaal uitgerust voor intensief
+  gebruik." (bijna dezelfde zin twee keer).
+* Goed: opener "Deze Hapert Cobalt HM2 is er helemaal klaar voor! 🚚" gevolgd
+  door body "Volledig uitgerust voor intensief gebruik, met sterke
+  specificaties en handige extra's voor elke klus."
+
 ### Klantnaam en productnamen
 
 Gebruik de klantnaam zoals ingevoerd door de klant — verander die niet.
