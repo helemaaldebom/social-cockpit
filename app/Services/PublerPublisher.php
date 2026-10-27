@@ -281,6 +281,29 @@ class PublerPublisher implements PublisherInterface
     }
 
     /**
+     * Zoekt de post-IDs die bij deze accounts op (ongeveer) dit tijdstip in
+     * Publer staan. Gebruikt scheduledPostsForAccounts() — dat vraagt expliciet
+     * ?state=scheduled op — i.p.v. het ongefilterde GET /posts van
+     * resolvePostIds(), dat net ingeplande posts vaak NIET teruggaf. Een kleine
+     * tolerantie (±120s) vangt verschillen als 07:30:00 vs 07:30:18 op.
+     *
+     * @return string[] gevonden post-IDs (uniek)
+     */
+    public function matchScheduledPostIds(array $accountIds, CarbonInterface $scheduledFor, int $toleranceSec = 120): array
+    {
+        $expected = $scheduledFor->copy()->utc()->getTimestamp();
+        $ids = [];
+
+        foreach ($this->scheduledPostsForAccounts($accountIds) as $post) {
+            if (abs($post['scheduled_ts'] - $expected) <= $toleranceSec) {
+                $ids[] = $post['id'];
+            }
+        }
+
+        return array_values(array_unique($ids));
+    }
+
+    /**
      * Haalt de scheduled posts op en filtert client-side op de specifieke
      * combinatie account_id ∈ $accountIds én scheduled_at == $scheduledFor.
      *

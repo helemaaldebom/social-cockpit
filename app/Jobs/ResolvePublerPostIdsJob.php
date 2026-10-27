@@ -2,8 +2,10 @@
 
 namespace App\Jobs;
 
+use App\Enums\ContentStatus;
 use App\Models\ContentItem;
 use App\Services\PublerPublisher;
+use App\Services\TelegramService;
 use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
@@ -17,8 +19,12 @@ use Illuminate\Support\Facades\Log;
  * op het ContentItem. Loopt los van SchedulePostToPublerJob zodat die job
  * snel afrondt en de queue niet blokkeert.
  *
- * Bij geen volledige set IDs nog niet gevonden: opnieuw inplannen met
- * exponentiële backoff (max 5 keer ~5 min totaal). Daarna geven we op.
+ * Belangrijk: Publer's bulk-schedule meldt "complete" óók als er in
+ * werkelijkheid 0 posts zijn aangemaakt (bv. een kapotte kanaalkoppeling).
+ * Daarom verifiëren we hier dat de posts écht bestaan. Na de laatste poging:
+ * - 0 gevonden  -> item op "mislukt" + Telegram-alert (niets staat live).
+ * - deels gevonden -> bewaren wat er is, maar Telegram-waarschuwing dat
+ *   één of meer netwerken niet zijn ingepland.
  */
 class ResolvePublerPostIdsJob implements ShouldQueue
 {
@@ -33,23 +39,23 @@ class ResolvePublerPostIdsJob implements ShouldQueue
         public readonly int $attempt = 1
     ) {}
 
-    public function handle(PublerPublisher $publisher): void
+    public function handle(PublerPublisher $publisher, TelegramService $telegram): void
     {
         $item = ContentItem::find($this->contentItemId);
         if (! $item) {
             return;
         }
 
-        // Korte poll-window: 10 × 1.5s = 15s. We zijn nu een aparte job, dus
-        // gewoon nog een keer dispatchen als we niet alles vinden.
         $scheduledFor = Carbon::parse($this->scheduledForIso);
-        $ids = $publisher->resolvePostIdsPublic($this->publerAccountIds, $scheduledFor, 10, 1500);
+        $ids = $publisher->matchScheduledPostIds($this->publerAccountIds, $scheduledFor);
 
         // BESCHERMING: adopteer nooit posts die al bij een ander content item
         // horen. Alleen "onbeclaimde" posts op dit tijdstip kunnen van ons zijn.
         $ids = array_values(array_diff($ids, ContentItem::claimedPublerPostIds($this->contentItemId)));
 
-        if (count($ids) >= count($this->publerAccountIds)) {
+        $expected = count($this->publerAccountIds);
+
+        if (count($ids) >= $expected) {
             $item->publer_post_ids = $ids;
             $item->publer_post_id  = $ids[0];
             $item->save();
@@ -62,7 +68,7 @@ class ResolvePublerPostIdsJob implements ShouldQueue
             return;
         }
 
-        // Niet (volledig) gevonden — opnieuw proberen met een grotere delay.
+        // Nog niet (volledig) gevonden — opnieuw proberen met grotere delay.
         if ($this->attempt < 6) {
             $delay = 15 * $this->attempt; // 15, 30, 45, 60, 75 seconden
             self::dispatch(
@@ -81,10 +87,49 @@ class ResolvePublerPostIdsJob implements ShouldQueue
             return;
         }
 
-        Log::warning('ResolvePublerPostIds: opgegeven na 6 pogingen', [
+        // Laatste poging voorbij: eindoordeel vellen.
+        $when = $scheduledFor->copy()->setTimezone('Europe/Amsterdam')->format('d-m-Y H:i');
+
+        if (count($ids) === 0) {
+            // Publer heeft niets aangemaakt — het item staat NIET live.
+            $item->publer_post_ids = null;
+            $item->publer_post_id  = null;
+            $item->save();
+
+            $item->changeStatus(
+                ContentStatus::Mislukt,
+                "Publer maakte geen posts aan voor {$when} (0 van {$expected} netwerken). Mogelijk een kanaalkoppeling die niet (meer) werkt."
+            );
+
+            Log::warning('ResolvePublerPostIds: 0 posts in Publer — item op mislukt', [
+                'content_item_id' => $item->id,
+                'expected'        => $expected,
+            ]);
+
+            $telegram->notify(
+                "❌ Content #{$item->id} \"{$item->title}\" is NIET ingepland: Publer maakte 0 van {$expected} posts aan voor {$when}.\n"
+                . 'Controleer de kanaalkoppelingen van ' . ($item->client?->name ?? 'de klant') . ' in Publer.'
+            );
+            return;
+        }
+
+        // Deels gelukt: bewaren wat er is, maar waarschuwen over de rest.
+        $item->publer_post_ids = $ids;
+        $item->publer_post_id  = $ids[0];
+        $item->save();
+
+        $missing = $expected - count($ids);
+
+        Log::warning('ResolvePublerPostIds: gedeeltelijk ingepland', [
             'content_item_id' => $item->id,
-            'found'           => count($ids),
+            'gevonden'        => count($ids),
+            'verwacht'        => $expected,
         ]);
+
+        $telegram->notify(
+            "⚠️ Content #{$item->id} \"{$item->title}\": slechts " . count($ids) . " van {$expected} netwerken ingepland in Publer voor {$when} ({$missing} mislukt).\n"
+            . 'Controleer de kanaalkoppelingen van ' . ($item->client?->name ?? 'de klant') . ' in Publer.'
+        );
     }
 
     public function failed(\Throwable $exception): void
