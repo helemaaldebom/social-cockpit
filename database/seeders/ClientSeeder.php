@@ -49,7 +49,7 @@ class ClientSeeder extends Seeder
             ['slug' => 'landus'],
             [
                 'name' => 'Landus',
-                'tone_of_voice' => 'Je bent een social media copywriter voor Landus. Schrijf professionele LinkedIn-posts die thought leadership uitstralen in de agrarische sector.',
+                'tone_of_voice' => self::landusToneOfVoice(),
                 'active' => true,
             ]
         );
@@ -141,6 +141,13 @@ class ClientSeeder extends Seeder
     {
         return file_get_contents(
             database_path('seeders/prompts/zts_tone_of_voice.md')
+        );
+    }
+
+    private static function landusToneOfVoice(): string
+    {
+        return file_get_contents(
+            database_path('seeders/prompts/landus_tone_of_voice.md')
         );
     }
 }
