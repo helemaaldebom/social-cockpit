@@ -15,6 +15,12 @@ class PublerPublisher implements PublisherInterface
 {
     private const BASE_URL = 'https://app.publer.com/api/v1';
 
+    /**
+     * Veiligheidsgrens voor het pagineren van /posts?state=scheduled, zodat een
+     * onverwacht niet-lege respons nooit tot een oneindige lus leidt.
+     */
+    private const MAX_SCHEDULED_PAGES = 50;
+
     private string $apiKey;
     private string $workspaceId;
 
@@ -230,47 +236,62 @@ class PublerPublisher implements PublisherInterface
         }
 
         try {
-            $response = Http::withHeaders($this->headers())
-                ->get(self::BASE_URL . '/posts', ['state' => 'scheduled']);
-
-            if (! $response->successful()) {
-                return [];
-            }
-
-            $posts = $response->json('posts') ?? $response->json('data') ?? [];
             $out = [];
 
-            foreach ((array) $posts as $post) {
-                $accountId = $post['account_id'] ?? null;
-                if (! in_array($accountId, $accountIds, true)) {
-                    continue;
-                }
-                if (empty($post['scheduled_at']) || empty($post['id'])) {
-                    continue;
-                }
-                try {
-                    $when = Carbon::parse($post['scheduled_at'])->utc();
-                } catch (\Throwable) {
-                    continue;
+            // Publer pagineert /posts. Eén call levert alleen de eerste pagina,
+            // waardoor posts die verder in de toekomst staan onzichtbaar blijven
+            // (dat veroorzaakte valse "0 posts"-alerts en onterecht mislukte items).
+            // Loop daarom door tot er een lege pagina terugkomt.
+            for ($page = 1; $page <= self::MAX_SCHEDULED_PAGES; $page++) {
+                $response = Http::withHeaders($this->headers())
+                    ->get(self::BASE_URL . '/posts', [
+                        'state' => 'scheduled',
+                        'page'  => $page,
+                    ]);
+
+                if (! $response->successful()) {
+                    // Pagina 1 mislukt -> niets bruikbaars; verderop: geef terug wat we hebben.
+                    return $page === 1 ? [] : $out;
                 }
 
-                $media = [];
-                foreach ((array) ($post['media'] ?? []) as $m) {
-                    if (! empty($m['path'])) {
-                        $media[] = $m['path'];
+                $posts = $response->json('posts') ?? $response->json('data') ?? [];
+
+                if (empty($posts)) {
+                    break;
+                }
+
+                foreach ((array) $posts as $post) {
+                    $accountId = $post['account_id'] ?? null;
+                    if (! in_array($accountId, $accountIds, true)) {
+                        continue;
                     }
-                }
+                    if (empty($post['scheduled_at']) || empty($post['id'])) {
+                        continue;
+                    }
+                    try {
+                        $when = Carbon::parse($post['scheduled_at'])->utc();
+                    } catch (\Throwable) {
+                        continue;
+                    }
 
-                $out[] = [
-                    'id'           => (string) $post['id'],
-                    'account_id'   => (string) $accountId,
-                    'group_id'     => (string) ($post['group_id'] ?? ''),
-                    'text'         => (string) ($post['text'] ?? ''),
-                    'type'         => (string) ($post['type'] ?? 'status'),
-                    'scheduled_at' => $when,
-                    'scheduled_ts' => $when->getTimestamp(),
-                    'media'        => $media,
-                ];
+                    $media = [];
+                    foreach ((array) ($post['media'] ?? []) as $m) {
+                        if (! empty($m['path'])) {
+                            $media[] = $m['path'];
+                        }
+                    }
+
+                    $out[] = [
+                        'id'           => (string) $post['id'],
+                        'account_id'   => (string) $accountId,
+                        'group_id'     => (string) ($post['group_id'] ?? ''),
+                        'text'         => (string) ($post['text'] ?? ''),
+                        'type'         => (string) ($post['type'] ?? 'status'),
+                        'scheduled_at' => $when,
+                        'scheduled_ts' => $when->getTimestamp(),
+                        'media'        => $media,
+                    ];
+                }
             }
 
             return $out;
