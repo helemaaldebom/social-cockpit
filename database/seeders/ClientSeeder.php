@@ -81,7 +81,9 @@ class ClientSeeder extends Seeder
             ]
         );
 
-        foreach ([SocialNetwork::Facebook, SocialNetwork::Instagram, SocialNetwork::LinkedIn] as $network) {
+        // buro_deBom publiceert niet via Facebook (koppeling vervallen) —
+        // bewust alleen Instagram en LinkedIn.
+        foreach ([SocialNetwork::Instagram, SocialNetwork::LinkedIn] as $network) {
             Channel::firstOrCreate(
                 ['client_id' => $burodebom->id, 'network' => $network->value],
                 ['name' => "buro_deBom {$network->label()}", 'active' => true]
