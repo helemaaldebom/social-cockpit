@@ -46,14 +46,20 @@ class ResolvePublerPostIdsJob implements ShouldQueue
             return;
         }
 
+        $expected = count($this->publerAccountIds);
+
+        // Al (volledig) opgelost — bijv. handmatig gezet of door een eerdere
+        // poging. Niet clobberen en zeker geen valse "mislukt" meer vellen.
+        if (is_array($item->publer_post_ids) && count($item->publer_post_ids) >= $expected) {
+            return;
+        }
+
         $scheduledFor = Carbon::parse($this->scheduledForIso);
         $ids = $publisher->matchScheduledPostIds($this->publerAccountIds, $scheduledFor);
 
         // BESCHERMING: adopteer nooit posts die al bij een ander content item
         // horen. Alleen "onbeclaimde" posts op dit tijdstip kunnen van ons zijn.
         $ids = array_values(array_diff($ids, ContentItem::claimedPublerPostIds($this->contentItemId)));
-
-        $expected = count($this->publerAccountIds);
 
         if (count($ids) >= $expected) {
             $item->publer_post_ids = $ids;
