@@ -243,11 +243,14 @@ class PublerPublisher implements PublisherInterface
             // (dat veroorzaakte valse "0 posts"-alerts en onterecht mislukte items).
             // Loop daarom door tot er een lege pagina terugkomt.
             for ($page = 1; $page <= self::MAX_SCHEDULED_PAGES; $page++) {
+                // BELANGRIJK: we vragen NIET ?state=scheduled op. Dat endpoint is
+                // onbetrouwbaar — het laat posts weg die wél degelijk ingepland
+                // staan (eventually-consistent / tijd-gevensterd), wat valse
+                // "0 posts"-alerts en onterecht mislukte items veroorzaakte.
+                // De ongefilterde lijst toont ze wél, met een 'state'-veld per
+                // post; we filteren client-side op state === 'scheduled'.
                 $response = Http::withHeaders($this->headers())
-                    ->get(self::BASE_URL . '/posts', [
-                        'state' => 'scheduled',
-                        'page'  => $page,
-                    ]);
+                    ->get(self::BASE_URL . '/posts', ['page' => $page]);
 
                 if (! $response->successful()) {
                     // Pagina 1 mislukt -> niets bruikbaars; verderop: geef terug wat we hebben.
@@ -260,7 +263,19 @@ class PublerPublisher implements PublisherInterface
                     break;
                 }
 
+                // De lijst staat op datum aflopend: alle toekomstige 'scheduled'
+                // posts staan vooraan, daarna 'published' historie. Zodra een hele
+                // pagina geen enkele scheduled-post meer bevat, zijn we voorbij de
+                // ingeplande posts en kunnen we stoppen (scheelt onnodig door de
+                // historie pagineren).
+                $pageHadScheduled = false;
+
                 foreach ((array) $posts as $post) {
+                    if (($post['state'] ?? null) !== 'scheduled') {
+                        continue;
+                    }
+                    $pageHadScheduled = true;
+
                     $accountId = $post['account_id'] ?? null;
                     if (! in_array($accountId, $accountIds, true)) {
                         continue;
@@ -291,6 +306,11 @@ class PublerPublisher implements PublisherInterface
                         'scheduled_ts' => $when->getTimestamp(),
                         'media'        => $media,
                     ];
+                }
+
+                // Voorbij de ingeplande posts (alleen nog historie) -> stoppen.
+                if (! $pageHadScheduled) {
+                    break;
                 }
             }
 
