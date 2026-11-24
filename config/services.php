@@ -43,6 +43,8 @@ return [
     'telegram' => [
         'bot_token' => env('TELEGRAM_BOT_TOKEN'),
         'chat_id' => env('TELEGRAM_CHAT_ID'),
+        // Geheim dat Telegram meestuurt in X-Telegram-Bot-Api-Secret-Token.
+        'webhook_secret' => env('TELEGRAM_WEBHOOK_SECRET'),
     ],
 
     'webhook' => [

@@ -49,6 +49,9 @@ class GenerateContentTextJob implements ShouldQueue
         // Aanleiding: een inzender-notitie ging ongezien als caption live.
         $item->changeStatus(ContentStatus::InReview, 'Klaar voor review — wacht op goedkeuring.');
 
+        // Ter goedkeuring naar Telegram (met knoppen Goedkeuren / Afwijzen).
+        SendTelegramReviewJob::dispatch($item->id);
+
         Notification::make()
             ->title('Tekst gegenereerd ✓')
             ->body("\"{$item->title}\" staat klaar voor review.")

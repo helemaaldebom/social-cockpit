@@ -309,9 +309,7 @@ class ContentItemResource extends Resource
      */
     public static function approveRecord(ContentItem $record, bool $notify = true): void
     {
-        $record->changeStatus(ContentStatus::Goedgekeurd, 'Goedgekeurd via Filament.');
-
-        $slot = \App\Jobs\ProcessAutoSchedulerJob::scheduleApproved($record->fresh(['client', 'channels']));
+        $slot = app(\App\Services\ApprovalService::class)->approve($record, 'Filament');
 
         if ($notify) {
             Notification::make()

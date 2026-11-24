@@ -43,10 +43,15 @@ class ReviewDigestCommand extends Command
             $lines[] = '';
         }
 
-        $lines[] = "Beoordelen en goedkeuren: {$url}";
+        $lines[] = 'Hieronder volgt elke post met de knoppen Goedkeuren / Afwijzen.';
+        $lines[] = "Of in de admin: {$url}";
         $lines[] = 'Zonder goedkeuring wordt er niets geplaatst.';
 
         $telegram->notify(implode("\n", $lines));
+
+        foreach ($items as $item) {
+            \App\Jobs\SendTelegramReviewJob::dispatch($item->id);
+        }
         $this->info("Digest verstuurd ({$items->count()} items).");
 
         return self::SUCCESS;
