@@ -18,7 +18,7 @@ class ContentItem extends Model
     use HasFactory, SoftDeletes;
 
     protected $fillable = [
-        'client_id', 'title', 'brief', 'original_text', 'generated_text',
+        'client_id', 'title', 'brief', 'original_text', 'source_note', 'generated_text',
         'media_path', 'media_paths',
         'status', 'scheduled_for', 'publer_post_id', 'publer_post_ids',
         'telegram_message_id', 'source_article_id',

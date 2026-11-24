@@ -43,6 +43,17 @@ class GenerateContentTextJob implements ShouldQueue
 
         $item->changeStatus(ContentStatus::Gegenereerd, 'Tekst gegenereerd via OpenAI.');
 
+        // Klanten met auto_approve = false (bv. ZTS) krijgen altijd een
+        // menselijke reviewstap: ingezonden tekst kan een notitie zijn i.p.v.
+        // een caption, en die mag niet ongezien live gaan. Stop dan op
+        // in_review en waarschuw via Telegram.
+        if (! ($item->client?->auto_approve ?? true)) {
+            $item->changeStatus(ContentStatus::InReview, 'Klaar voor review (handmatige goedkeuring vereist voor deze klant).');
+
+            $this->notifyReview($item, $telegram);
+            return;
+        }
+
         // Probeer direct auto-in te plannen op het eerstvolgende vrije slot.
         // Lukt dat niet (geen slots, geen Publer-accounts, geen vrij moment),
         // dan valt het terug op de oude flow: status InReview voor handmatige
@@ -53,11 +64,30 @@ class GenerateContentTextJob implements ShouldQueue
 
         $item->changeStatus(ContentStatus::InReview, 'Klaar voor review (geen automatisch slot gevonden).');
 
+        $this->notifyReview($item, $telegram);
+    }
+
+    /**
+     * Meld dat een item klaarstaat voor handmatige review — in de Filament-
+     * inbox én via Telegram zodat het niet ongemerkt blijft liggen.
+     */
+    private function notifyReview(ContentItem $item, TelegramService $telegram): void
+    {
         Notification::make()
             ->title('Tekst gegenereerd ✓')
             ->body("\"{$item->title}\" staat klaar voor review.")
             ->success()
             ->sendToDatabase(User::first());
+
+        try {
+            $telegram->notify(
+                "📝 Content #{$item->id} \"{$item->title}\" ("
+                . ($item->client?->name ?? 'klant')
+                . ") staat klaar voor review en wacht op jouw goedkeuring vóór publicatie."
+            );
+        } catch (\Throwable $e) {
+            Log::warning('Telegram review-melding mislukt', ['content_item_id' => $item->id, 'error' => $e->getMessage()]);
+        }
     }
 
     /**

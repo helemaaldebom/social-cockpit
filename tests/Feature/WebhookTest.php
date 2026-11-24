@@ -104,6 +104,34 @@ class WebhookTest extends TestCase
         ]);
     }
 
+    public function test_webhook_stores_note_separately_and_never_as_caption_source(): void
+    {
+        Queue::fake();
+        $secret = 'test-secret';
+        config(['services.webhook.secret' => $secret]);
+        Client::factory()->create(['slug' => 'test-client', 'active' => true]);
+
+        $payload = json_encode([
+            'client'        => 'test-client',
+            'brief'         => 'Nieuwe boottrailer afgeleverd',
+            'title'         => 'Met notitie',
+            'original_text' => 'Nieuwe boottrailer afgeleverd',
+            'note'          => 'Filmpje wilde niet uploaden',
+        ]);
+
+        $this->call('POST', '/api/webhook/content', [], [], [], [
+            'HTTP_X_WEBHOOK_SIGNATURE' => $this->makeSignature($payload, $secret),
+            'CONTENT_TYPE'             => 'application/json',
+        ], $payload)->assertStatus(201);
+
+        $item = \App\Models\ContentItem::where('title', 'Met notitie')->firstOrFail();
+
+        $this->assertSame('Filmpje wilde niet uploaden', $item->source_note);
+        // De notitie mag NOOIT in de captionbron terechtkomen.
+        $this->assertStringNotContainsString('wilde niet uploaden', (string) $item->brief);
+        $this->assertStringNotContainsString('wilde niet uploaden', (string) $item->original_text);
+    }
+
     public function test_webhook_is_idempotent_per_external_id(): void
     {
         Queue::fake();
