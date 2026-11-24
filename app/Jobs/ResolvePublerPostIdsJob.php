@@ -55,7 +55,30 @@ class ResolvePublerPostIdsJob implements ShouldQueue
         }
 
         $scheduledFor = Carbon::parse($this->scheduledForIso);
-        $ids = $publisher->matchScheduledPostIds($this->publerAccountIds, $scheduledFor);
+        $ids = $publisher->matchScheduledPostIdsOrNull($this->publerAccountIds, $scheduledFor);
+
+        // Publer onbereikbaar: we WETEN niet of de posts er staan. Dan nooit
+        // een eindoordeel "mislukt" vellen — opnieuw proberen, en na de laatste
+        // poging alleen melden dat verificatie niet lukte.
+        if ($ids === null) {
+            if ($this->attempt < 6) {
+                self::dispatch(
+                    $this->contentItemId,
+                    $this->publerAccountIds,
+                    $this->scheduledForIso,
+                    $this->attempt + 1
+                )->delay(now()->addSeconds(60 * $this->attempt));
+                return;
+            }
+
+            Log::warning('ResolvePublerPostIds: Publer onbereikbaar, niet geverifieerd', [
+                'content_item_id' => $item->id,
+            ]);
+            $telegram->notify(
+                "⚠️ Content #{$item->id} \"{$item->title}\": kon niet bij Publer controleren of de posts zijn ingepland (Publer onbereikbaar). Status is NIET gewijzigd — controleer handmatig."
+            );
+            return;
+        }
 
         // BESCHERMING: adopteer nooit posts die al bij een ander content item
         // horen. Alleen "onbeclaimde" posts op dit tijdstip kunnen van ons zijn.

@@ -178,6 +178,55 @@ class PublerPublisher implements PublisherInterface
     }
 
     /**
+     * Haalt ALLE scheduled posts van de workspace op (ruwe Publer-data).
+     *
+     * LET OP — Publer pagineert vanaf pagina 0, niet 1. Eerdere versies
+     * begonnen bij page=1 en sloegen daardoor structureel de eerste 15 posts
+     * over: precies de meest recent/verst ingeplande. Gevolg: valse
+     * "0 van N posts"-alerts, items onterecht op mislukt, en een
+     * slot-bezettingscheck die bestaande posts niet zag.
+     *
+     * @return array<int, array<string, mixed>>|null  null = Publer onbereikbaar
+     */
+    private function fetchScheduledRaw(): ?array
+    {
+        $all = [];
+
+        for ($page = 0; $page < self::MAX_SCHEDULED_PAGES; $page++) {
+            $response = Http::withHeaders($this->headers())
+                ->get(self::BASE_URL . '/posts', ['state' => 'scheduled', 'page' => $page]);
+
+            if (! $response->successful()) {
+                // Eerste pagina mislukt -> niets bruikbaars. Later: geef terug wat er is.
+                return $page === 0 ? null : array_values($all);
+            }
+
+            $posts = $response->json('posts') ?? $response->json('data') ?? [];
+
+            if (empty($posts)) {
+                break;
+            }
+
+            foreach ((array) $posts as $post) {
+                // Vangnet: negeer alles wat (toch) niet scheduled is.
+                if (isset($post['state']) && $post['state'] !== 'scheduled') {
+                    continue;
+                }
+                if (! empty($post['id'])) {
+                    $all[(string) $post['id']] = $post;
+                }
+            }
+
+            $total = $response->json('total');
+            if (is_numeric($total) && count($all) >= (int) $total) {
+                break;
+            }
+        }
+
+        return array_values($all);
+    }
+
+    /**
      * Geeft de geplande publicatietijden (UTC epoch-seconden) van ALLE posts
      * die op deze accounts in Publer staan — ongeacht of ze via de Cockpit of
      * handmatig zijn ingepland. Bron van waarheid voor slot-bezetting.
@@ -185,40 +234,10 @@ class PublerPublisher implements PublisherInterface
      */
     public function scheduledTimestampsForAccounts(array $accountIds): array
     {
-        if (empty($accountIds) || $this->apiKey === '') {
-            return [];
-        }
-
-        try {
-            $response = Http::withHeaders($this->headers())
-                ->get(self::BASE_URL . '/posts', ['state' => 'scheduled']);
-
-            if (! $response->successful()) {
-                return [];
-            }
-
-            $posts = $response->json('posts') ?? $response->json('data') ?? [];
-            $timestamps = [];
-
-            foreach ((array) $posts as $post) {
-                if (! in_array($post['account_id'] ?? null, $accountIds, true)) {
-                    continue;
-                }
-                if (empty($post['scheduled_at'])) {
-                    continue;
-                }
-                try {
-                    $timestamps[] = Carbon::parse($post['scheduled_at'])->utc()->getTimestamp();
-                } catch (\Throwable) {
-                    // skip
-                }
-            }
-
-            return array_values(array_unique($timestamps));
-        } catch (\Throwable $e) {
-            Log::warning('Publer scheduledTimestampsForAccounts faalde', ['error' => $e->getMessage()]);
-            return [];
-        }
+        return array_values(array_unique(array_column(
+            $this->scheduledPostsForAccounts($accountIds),
+            'scheduled_ts'
+        )));
     }
 
     /**
@@ -231,94 +250,68 @@ class PublerPublisher implements PublisherInterface
      */
     public function scheduledPostsForAccounts(array $accountIds): array
     {
+        return $this->scheduledPostsForAccountsOrNull($accountIds) ?? [];
+    }
+
+    /**
+     * Zelfde als scheduledPostsForAccounts(), maar geeft null terug wanneer
+     * Publer niet bereikbaar is. Zo kan de aanroeper onderscheid maken tussen
+     * "er staat niets" en "we weten het niet" — cruciaal om een item niet
+     * onterecht op mislukt te zetten tijdens een Publer-storing.
+     */
+    public function scheduledPostsForAccountsOrNull(array $accountIds): ?array
+    {
         if (empty($accountIds) || $this->apiKey === '') {
             return [];
         }
 
         try {
-            $out = [];
+            $raw = $this->fetchScheduledRaw();
+        } catch (\Throwable $e) {
+            Log::warning('Publer scheduledPostsForAccounts faalde', ['error' => $e->getMessage()]);
+            return null;
+        }
 
-            // Publer pagineert /posts. Eén call levert alleen de eerste pagina,
-            // waardoor posts die verder in de toekomst staan onzichtbaar blijven
-            // (dat veroorzaakte valse "0 posts"-alerts en onterecht mislukte items).
-            // Loop daarom door tot er een lege pagina terugkomt.
-            for ($page = 1; $page <= self::MAX_SCHEDULED_PAGES; $page++) {
-                // BELANGRIJK: we vragen NIET ?state=scheduled op. Dat endpoint is
-                // onbetrouwbaar — het laat posts weg die wél degelijk ingepland
-                // staan (eventually-consistent / tijd-gevensterd), wat valse
-                // "0 posts"-alerts en onterecht mislukte items veroorzaakte.
-                // De ongefilterde lijst toont ze wél, met een 'state'-veld per
-                // post; we filteren client-side op state === 'scheduled'.
-                $response = Http::withHeaders($this->headers())
-                    ->get(self::BASE_URL . '/posts', ['page' => $page]);
+        if ($raw === null) {
+            return null;
+        }
 
-                if (! $response->successful()) {
-                    // Pagina 1 mislukt -> niets bruikbaars; verderop: geef terug wat we hebben.
-                    return $page === 1 ? [] : $out;
-                }
+        $out = [];
 
-                $posts = $response->json('posts') ?? $response->json('data') ?? [];
+        foreach ($raw as $post) {
+            $accountId = $post['account_id'] ?? null;
+            if (! in_array($accountId, $accountIds, true)) {
+                continue;
+            }
+            if (empty($post['scheduled_at'])) {
+                continue;
+            }
+            try {
+                $when = Carbon::parse($post['scheduled_at'])->utc();
+            } catch (\Throwable) {
+                continue;
+            }
 
-                if (empty($posts)) {
-                    break;
-                }
-
-                // De lijst staat op datum aflopend: alle toekomstige 'scheduled'
-                // posts staan vooraan, daarna 'published' historie. Zodra een hele
-                // pagina geen enkele scheduled-post meer bevat, zijn we voorbij de
-                // ingeplande posts en kunnen we stoppen (scheelt onnodig door de
-                // historie pagineren).
-                $pageHadScheduled = false;
-
-                foreach ((array) $posts as $post) {
-                    if (($post['state'] ?? null) !== 'scheduled') {
-                        continue;
-                    }
-                    $pageHadScheduled = true;
-
-                    $accountId = $post['account_id'] ?? null;
-                    if (! in_array($accountId, $accountIds, true)) {
-                        continue;
-                    }
-                    if (empty($post['scheduled_at']) || empty($post['id'])) {
-                        continue;
-                    }
-                    try {
-                        $when = Carbon::parse($post['scheduled_at'])->utc();
-                    } catch (\Throwable) {
-                        continue;
-                    }
-
-                    $media = [];
-                    foreach ((array) ($post['media'] ?? []) as $m) {
-                        if (! empty($m['path'])) {
-                            $media[] = $m['path'];
-                        }
-                    }
-
-                    $out[] = [
-                        'id'           => (string) $post['id'],
-                        'account_id'   => (string) $accountId,
-                        'group_id'     => (string) ($post['group_id'] ?? ''),
-                        'text'         => (string) ($post['text'] ?? ''),
-                        'type'         => (string) ($post['type'] ?? 'status'),
-                        'scheduled_at' => $when,
-                        'scheduled_ts' => $when->getTimestamp(),
-                        'media'        => $media,
-                    ];
-                }
-
-                // Voorbij de ingeplande posts (alleen nog historie) -> stoppen.
-                if (! $pageHadScheduled) {
-                    break;
+            $media = [];
+            foreach ((array) ($post['media'] ?? []) as $m) {
+                if (! empty($m['path'])) {
+                    $media[] = $m['path'];
                 }
             }
 
-            return $out;
-        } catch (\Throwable $e) {
-            Log::warning('Publer scheduledPostsForAccounts faalde', ['error' => $e->getMessage()]);
-            return [];
+            $out[] = [
+                'id'           => (string) $post['id'],
+                'account_id'   => (string) $accountId,
+                'group_id'     => (string) ($post['group_id'] ?? ''),
+                'text'         => (string) ($post['text'] ?? ''),
+                'type'         => (string) ($post['type'] ?? 'status'),
+                'scheduled_at' => $when,
+                'scheduled_ts' => $when->getTimestamp(),
+                'media'        => $media,
+            ];
         }
+
+        return $out;
     }
 
     /**
@@ -332,10 +325,25 @@ class PublerPublisher implements PublisherInterface
      */
     public function matchScheduledPostIds(array $accountIds, CarbonInterface $scheduledFor, int $toleranceSec = 120): array
     {
+        return $this->matchScheduledPostIdsOrNull($accountIds, $scheduledFor, $toleranceSec) ?? [];
+    }
+
+    /**
+     * Als matchScheduledPostIds(), maar null wanneer Publer onbereikbaar is.
+     *
+     * @return string[]|null
+     */
+    public function matchScheduledPostIdsOrNull(array $accountIds, CarbonInterface $scheduledFor, int $toleranceSec = 120): ?array
+    {
+        $posts = $this->scheduledPostsForAccountsOrNull($accountIds);
+        if ($posts === null) {
+            return null;
+        }
+
         $expected = $scheduledFor->copy()->utc()->getTimestamp();
         $ids = [];
 
-        foreach ($this->scheduledPostsForAccounts($accountIds) as $post) {
+        foreach ($posts as $post) {
             if (abs($post['scheduled_ts'] - $expected) <= $toleranceSec) {
                 $ids[] = $post['id'];
             }
@@ -575,6 +583,36 @@ class PublerPublisher implements PublisherInterface
         }
 
         return in_array($accountId, $allowedAccountIds, true);
+    }
+
+    /**
+     * Haalt één post op (ook na publicatie). Geeft state/error/post_link terug.
+     *
+     * @return array{state:string,error:mixed,post_link:?string}|null|false
+     *         null = post bestaat niet (meer) in Publer, false = Publer onbereikbaar
+     */
+    public function getPostStatus(string $publerPostId): array|null|false
+    {
+        try {
+            $response = Http::withHeaders($this->headers())
+                ->get(self::BASE_URL . '/posts/' . urlencode($publerPostId));
+        } catch (\Throwable $e) {
+            Log::warning('Publer getPostStatus faalde', ['error' => $e->getMessage()]);
+            return false;
+        }
+
+        if ($response->status() === 404) {
+            return null;
+        }
+        if (! $response->successful()) {
+            return false;
+        }
+
+        return [
+            'state'     => (string) ($response->json('state') ?? ''),
+            'error'     => $response->json('error'),
+            'post_link' => $response->json('post_link'),
+        ];
     }
 
     /**

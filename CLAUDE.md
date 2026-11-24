@@ -29,8 +29,26 @@ Elke overgang naar `mislukt` is altijd geldig. Elke overgang wordt gelogd in `co
 ### Publishing
 Gaat altijd via `PublisherInterface` → `PublerPublisher`. Nooit rechtstreeks naar LinkedIn/FB/Instagram.
 
+### Goedkeuring (harde regel)
+Er wordt NOOIT automatisch ingepland of gepubliceerd. `GenerateContentTextJob`
+stopt altijd op `in_review`. Alleen de actie "Goedkeuren" in Filament (tab
+"Te beoordelen", ook als bulk-actie) zet een item op `goedgekeurd` en plant het
+in via `ProcessAutoSchedulerJob::scheduleApproved()` (gekozen tijd, anders het
+eerstvolgende vrije slot; alleen de kanalen van het item zelf).
+`social:review-digest` stuurt elke maandag 08:00 een Telegram-overzicht van wat
+op goedkeuring wacht. Bouw geen pad dat deze stap overslaat.
+
+### Publer-API valkuilen
+- `GET /posts` pagineert vanaf **page=0**. Beginnen bij 1 slaat de eerste 15
+  (verst ingeplande) posts over → valse "0 van N posts"-alerts.
+- `job_status` → `payload.failures` meldt per post "composer is in a bad state…
+  missing the social network params" voor de accounts die NIET in die post
+  zitten. Dat is ruis, geen kapotte koppeling. Verifieer altijd via de lijst.
+- `social:verify-published` (uurlijks) zet een item pas op `geplaatst` als Publer
+  de publicatie bevestigt, en alarmeert via Telegram als dat niet gebeurt.
+
 ### Queue
-Alle externe API-calls (OpenAI, Publer, Telegram) via Redis queue + Horizon.
+Alle externe API-calls (OpenAI, Publer, Telegram) via de Redis queue (productie: systemd-unit `social-cockpit-worker.service`, niet Horizon).
 Jobs: `GenerateContentTextJob`, `SchedulePostToPublerJob`, `SendTelegramPreviewJob`, `UpdatePublerPostJob`, `FetchRssFeedsJob`, `ProcessAutoSchedulerJob`.
 
 ## Klanten bij start
@@ -47,18 +65,22 @@ Jobs: `GenerateContentTextJob`, `SchedulePostToPublerJob`, `SendTelegramPreviewJ
 - `ValidateWebhookSignature` middleware op webhook endpoint
 - TOTP 2FA via `pragmarx/google2fa-laravel`, beheer via `/admin/two-factor-setup`
 
-## ZTS auto-workflow
+## ZTS-workflow
 
 Inzendingen op socialmedia.z-t-s.nl worden door de WordPress-plugin **MIM Social
-Publisher** (op die server) naast hun bestaande social_post-flow ook gePOST naar
-`/api/webhook/content` met `client=zts`, `original_text`, `media_urls[]`,
-`external_id` en HMAC-handtekening. De Cockpit downloadt de media, maakt een
-ContentItem aan (status Concept), draait `GenerateContentTextJob` (met de
-ZTS-tone-of-voice prompt uit `database/seeders/prompts/zts_tone_of_voice.md`),
-status → InReview → Goedgekeurd. De `social:process-scheduler` cron pakt het op
-naar het eerstvolgende dinsdag/vrijdag 07:30-slot en plant in via Publer.
-`SchedulePostToPublerJob` triggert `SendTelegramPreviewJob` 24u voor publicatie.
-Replies in Telegram refinen de tekst en updaten de bestaande Publer-post.
+Publisher** (op die server) gePOST naar `/api/webhook/content` met `client=zts`,
+`original_text`, `media_urls[]`, `external_id` en HMAC-handtekening (optioneel
+`note`: opmerking aan buro_deBom, wordt opgeslagen als `source_note` en gaat
+nooit de generatie in). De Cockpit downloadt de media, maakt een ContentItem
+aan, draait `GenerateContentTextJob` (ZTS-tone-of-voice uit
+`database/seeders/prompts/zts_tone_of_voice.md`) en zet het item op `in_review`.
+Na handmatige goedkeuring wordt het ingepland op het eerstvolgende
+dinsdag/vrijdag 07:30-slot. `SchedulePostToPublerJob` triggert
+`SendTelegramPreviewJob` 24u voor publicatie. Replies in Telegram refinen de
+tekst en updaten de bestaande Publer-post.
+
+Let op: inzenders typen soms een notitie ("filmpje wilde niet uploaden") in het
+tekstveld. Daarom is de reviewstap verplicht.
 
 ## OpenAI-tokenbeheer
 
@@ -84,7 +106,7 @@ het kwaliteitsanker voor de schrijfstijl.
 
 ## Tests
 
-`php artisan test` — 16 tests, SQLite in-memory. Covert: status transitions,
+`php artisan test` — 45 tests, SQLite in-memory. Covert: status transitions,
 audit log, publish slot interval logica, webhook HMAC validatie, webhook media
 + originele tekst + idempotentie per `external_id`.
 

@@ -12,9 +12,9 @@ class Client extends Model
 {
     use HasFactory, SoftDeletes;
 
-    protected $fillable = ['name', 'slug', 'tone_of_voice', 'active', 'auto_approve'];
+    protected $fillable = ['name', 'slug', 'tone_of_voice', 'active'];
 
-    protected $casts = ['active' => 'boolean', 'auto_approve' => 'boolean'];
+    protected $casts = ['active' => 'boolean'];
 
     public function channels(): HasMany
     {

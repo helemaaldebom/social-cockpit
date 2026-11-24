@@ -4,6 +4,7 @@ namespace App\Jobs;
 
 use App\Enums\ContentStatus;
 use App\Models\ContentItem;
+use Carbon\Carbon;
 use Illuminate\Bus\Queueable;
 use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
@@ -17,50 +18,63 @@ class ProcessAutoSchedulerJob implements ShouldQueue
 
     public function handle(): void
     {
-        // Veiligheidsnet voor items die ondanks GenerateContentTextJob's
-        // auto-schedule alsnog op Goedgekeurd staan (bv. handmatig goedgekeurd
-        // via Filament, of auto-schedule mislukte omdat er geen vrij slot was).
-        $items = ContentItem::with('client')
+        // Plant ALLEEN items in die een mens expliciet heeft goedgekeurd
+        // (status Goedgekeurd) en die nog niet bij Publer staan. Er bestaat
+        // geen pad meer dat zonder goedkeuring naar Publer leidt.
+        $items = ContentItem::with('client', 'channels')
             ->where('status', ContentStatus::Goedgekeurd->value)
             ->whereNull('publer_post_id')
             ->orderBy('created_at')
             ->get();
 
         foreach ($items as $item) {
-            $this->processItem($item);
+            self::scheduleApproved($item);
         }
     }
 
-    private function processItem(ContentItem $item): void
+    /**
+     * Plant één goedgekeurd item in bij Publer. Gebruikt de kanalen van het
+     * item zelf (niet alle kanalen van de klant) en respecteert een expliciet
+     * gekozen toekomstige publicatietijd; anders het eerstvolgende vrije slot.
+     *
+     * @return Carbon|null het gekozen tijdstip, of null als inplannen (nog) niet kan
+     */
+    public static function scheduleApproved(ContentItem $item): ?Carbon
     {
+        if ($item->status !== ContentStatus::Goedgekeurd || $item->publer_post_id) {
+            return null;
+        }
+
         $client = $item->client;
         if (! $client) {
-            return;
+            return null;
         }
 
-        $publerAccountIds = $client->channels()
+        $publerAccountIds = $item->channels
             ->where('active', true)
-            ->whereNotNull('publer_account_id')
             ->pluck('publer_account_id')
-            ->toArray();
+            ->filter()
+            ->values()
+            ->all();
 
         if (empty($publerAccountIds)) {
-            Log::warning("ProcessAutoScheduler: geen Publer-accounts voor client {$client->id}");
-            return;
+            Log::warning("Inplannen overgeslagen: item #{$item->id} heeft geen kanalen met Publer-account.");
+            return null;
         }
 
-        $slot = $client->nextFreeSlot();
+        $slot = ($item->scheduled_for && $item->scheduled_for->isFuture())
+            ? $item->scheduled_for->copy()->setTimezone('Europe/Amsterdam')
+            : $client->nextFreeSlot();
+
         if (! $slot) {
-            Log::info("ProcessAutoScheduler: geen vrij slot voor item #{$item->id} (client {$client->id})");
-            return;
+            Log::info("Inplannen overgeslagen: geen vrij slot voor item #{$item->id} (client {$client->id})");
+            return null;
         }
 
-        Log::info("ProcessAutoScheduler: inplannen item #{$item->id} voor {$slot} (client {$client->id})");
+        Log::info("Goedgekeurd item #{$item->id} wordt ingepland voor {$slot} (client {$client->id})");
 
-        SchedulePostToPublerJob::dispatch(
-            $item,
-            $publerAccountIds,
-            $slot->toIso8601String()
-        );
+        SchedulePostToPublerJob::dispatch($item, $publerAccountIds, $slot->toIso8601String());
+
+        return $slot;
     }
 }

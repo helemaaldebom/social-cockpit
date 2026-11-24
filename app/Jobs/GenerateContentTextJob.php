@@ -43,110 +43,17 @@ class GenerateContentTextJob implements ShouldQueue
 
         $item->changeStatus(ContentStatus::Gegenereerd, 'Tekst gegenereerd via OpenAI.');
 
-        // Klanten met auto_approve = false (bv. ZTS) krijgen altijd een
-        // menselijke reviewstap: ingezonden tekst kan een notitie zijn i.p.v.
-        // een caption, en die mag niet ongezien live gaan. Stop dan op
-        // in_review en waarschuw via Telegram.
-        if (! ($item->client?->auto_approve ?? true)) {
-            $item->changeStatus(ContentStatus::InReview, 'Klaar voor review (handmatige goedkeuring vereist voor deze klant).');
+        // NOOIT automatisch inplannen of publiceren. Elke gegenereerde tekst
+        // stopt hier op "in_review" en wacht op expliciete goedkeuring in de
+        // admin (wekelijkse review). Pas na die goedkeuring wordt er ingepland.
+        // Aanleiding: een inzender-notitie ging ongezien als caption live.
+        $item->changeStatus(ContentStatus::InReview, 'Klaar voor review — wacht op goedkeuring.');
 
-            $this->notifyReview($item, $telegram);
-            return;
-        }
-
-        // Probeer direct auto-in te plannen op het eerstvolgende vrije slot.
-        // Lukt dat niet (geen slots, geen Publer-accounts, geen vrij moment),
-        // dan valt het terug op de oude flow: status InReview voor handmatige
-        // goedkeuring in Filament.
-        if ($this->autoScheduleIfPossible($item)) {
-            return;
-        }
-
-        $item->changeStatus(ContentStatus::InReview, 'Klaar voor review (geen automatisch slot gevonden).');
-
-        $this->notifyReview($item, $telegram);
-    }
-
-    /**
-     * Meld dat een item klaarstaat voor handmatige review — in de Filament-
-     * inbox én via Telegram zodat het niet ongemerkt blijft liggen.
-     */
-    private function notifyReview(ContentItem $item, TelegramService $telegram): void
-    {
         Notification::make()
             ->title('Tekst gegenereerd ✓')
             ->body("\"{$item->title}\" staat klaar voor review.")
             ->success()
             ->sendToDatabase(User::first());
-
-        try {
-            $telegram->notify(
-                "📝 Content #{$item->id} \"{$item->title}\" ("
-                . ($item->client?->name ?? 'klant')
-                . ") staat klaar voor review en wacht op jouw goedkeuring vóór publicatie."
-            );
-        } catch (\Throwable $e) {
-            Log::warning('Telegram review-melding mislukt', ['content_item_id' => $item->id, 'error' => $e->getMessage()]);
-        }
-    }
-
-    /**
-     * Plant het item direct in op het eerstvolgende vrije slot van de klant.
-     * Retourneert true als het is gelukt.
-     */
-    private function autoScheduleIfPossible(ContentItem $item): bool
-    {
-        $client = $item->client;
-        if (! $client) {
-            return false;
-        }
-
-        $publerAccountIds = $client->channels()
-            ->where('active', true)
-            ->whereNotNull('publer_account_id')
-            ->pluck('publer_account_id')
-            ->toArray();
-
-        if (empty($publerAccountIds)) {
-            Log::info('Auto-schedule overgeslagen: geen Publer-accounts', ['content_item_id' => $item->id]);
-            return false;
-        }
-
-        // Is er in het formulier een expliciete publicatietijd gekozen? Dan is
-        // die leidend (ook voor klanten zonder actief slot, bv. buro_deBom of
-        // Bas Romeijn). Anders valt het terug op het eerstvolgende vrije slot.
-        $slot = ($item->scheduled_for && $item->scheduled_for->isFuture())
-            ? $item->scheduled_for->copy()->setTimezone('Europe/Amsterdam')
-            : $client->nextFreeSlot();
-
-        if (! $slot) {
-            Log::info('Auto-schedule overgeslagen: geen vrij slot gevonden', ['content_item_id' => $item->id]);
-            return false;
-        }
-
-        $item->changeStatus(
-            ContentStatus::Goedgekeurd,
-            'Automatisch goedgekeurd voor inplanning op ' . $slot->format('d-m-Y H:i') . '.'
-        );
-
-        SchedulePostToPublerJob::dispatch(
-            $item,
-            $publerAccountIds,
-            $slot->toIso8601String()
-        );
-
-        Notification::make()
-            ->title('Tekst gegenereerd + ingepland ✓')
-            ->body("\"{$item->title}\" wordt ingepland op " . $slot->format('d-m-Y H:i') . '.')
-            ->success()
-            ->sendToDatabase(User::first());
-
-        Log::info('Auto-schedule gedispatcht', [
-            'content_item_id' => $item->id,
-            'scheduled_for'   => $slot->toIso8601String(),
-        ]);
-
-        return true;
     }
 
     public function failed(\Throwable $exception): void
