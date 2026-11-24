@@ -24,6 +24,7 @@ class WebhookController extends Controller
             'brief'           => 'required|string',
             'title'           => 'nullable|string',
             'original_text'   => 'nullable|string',
+            'note'            => 'nullable|string',
             'channels'        => 'nullable|array',
             'media_urls'      => 'nullable|array',
             'media_urls.*'    => 'nullable|url',
@@ -70,6 +71,9 @@ class WebhookController extends Controller
             'title'         => $title,
             'brief'         => $request->input('brief'),
             'original_text' => $request->input('original_text'),
+            // Opmerking aan buro_deBom — puur ter info, gaat nooit de generatie
+            // in en wordt nooit gepubliceerd.
+            'source_note'   => $request->input('note'),
             'status'        => ContentStatus::Concept->value,
             'media_path'    => $mediaPaths[0] ?? null,
             'media_paths'   => $mediaPaths ?: null,
