@@ -35,11 +35,11 @@ class ResolveVerifiesPublerTest extends TestCase
         ]);
     }
 
-    private function fakePublisher(array $matchReturn): void
+    private function fakePublisher(?array $matchReturn): void
     {
         $fake = new class($matchReturn) extends PublerPublisher {
-            public function __construct(private array $ret) {}
-            public function matchScheduledPostIds(array $accountIds, \Carbon\CarbonInterface $scheduledFor, int $toleranceSec = 120): array
+            public function __construct(private ?array $ret) {}
+            public function matchScheduledPostIdsOrNull(array $accountIds, \Carbon\CarbonInterface $scheduledFor, int $toleranceSec = 120): ?array
             {
                 return $this->ret;
             }
@@ -107,5 +107,20 @@ class ResolveVerifiesPublerTest extends TestCase
         $this->assertSame(ContentStatus::Ingepland, $item->status);
         $this->assertSame(['p1', 'p2'], $item->publer_post_ids);
         $this->assertCount(0, $tg->sent);
+    }
+
+    public function test_publer_outage_never_marks_item_failed(): void
+    {
+        $item = $this->makeItem(['a', 'b']);
+        $this->fakePublisher(null); // Publer onbereikbaar
+        $spy = $this->spyTelegram();
+
+        // Laatste poging: zelfs dan geen "mislukt", alleen een melding.
+        (new ResolvePublerPostIdsJob($item->id, ['a', 'b'], $item->scheduled_for->toIso8601String(), 6))
+            ->handle(app(PublerPublisher::class), app(TelegramService::class));
+
+        $this->assertSame(ContentStatus::Ingepland, $item->fresh()->status);
+        $this->assertCount(1, $spy->sent);
+        $this->assertStringContainsString('kon niet bij Publer controleren', $spy->sent[0]);
     }
 }

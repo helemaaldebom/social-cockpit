@@ -22,9 +22,6 @@ class ClientSeeder extends Seeder
                 'name' => 'ZTS / Zanen Techniek Service',
                 'tone_of_voice' => self::ztsToneOfVoice(),
                 'active' => true,
-                // Inzendingen kunnen een notitie i.p.v. caption bevatten —
-                // altijd eerst menselijke review vóór publicatie.
-                'auto_approve' => false,
             ]
         );
 

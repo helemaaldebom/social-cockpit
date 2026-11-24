@@ -215,12 +215,32 @@ class ContentItemResource extends Resource
                         Notification::make()->title('Generatie gestart')->success()->send();
                     }),
 
-                // Goedkeuren-actie verwijderd: nieuwe items gaan via de
-                // auto-flow (GenerateContentTextJob -> SchedulePostToPublerJob)
-                // direct naar Ingepland, en Telegram is het reviewmoment.
-                // De "Direct goedkeuren"-actie voor handgeschreven posts in
-                // Filament zelf blijft beschikbaar voor klanten die handmatig
-                // content maken (bv. buro_deBom).
+                // Goedkeuren = het ENIGE pad naar publicatie. Niets wordt
+                // ingepland of geplaatst zonder deze expliciete handeling.
+                Tables\Actions\Action::make('approve')
+                    ->label('Goedkeuren')
+                    ->icon('heroicon-o-check-circle')
+                    ->color('success')
+                    ->visible(fn (ContentItem $record) => $record->status === ContentStatus::InReview)
+                    ->requiresConfirmation()
+                    ->modalHeading(fn (ContentItem $record) => 'Goedkeuren: ' . $record->title)
+                    ->modalDescription(fn (ContentItem $record) => new \Illuminate\Support\HtmlString(
+                        '<div style="text-align:left">'
+                        . '<p><strong>Tekst die geplaatst wordt:</strong></p>'
+                        . '<p style="white-space:pre-wrap">' . e((string) $record->generated_text) . '</p>'
+                        . (filled($record->original_text)
+                            ? '<hr style="margin:.75rem 0"><p><strong>Ingezonden tekst:</strong></p><p style="white-space:pre-wrap">' . e($record->original_text) . '</p>'
+                            : '')
+                        . (filled($record->source_note)
+                            ? '<hr style="margin:.75rem 0"><p><strong>Notitie van inzender (wordt niet geplaatst):</strong></p><p style="white-space:pre-wrap">' . e($record->source_note) . '</p>'
+                            : '')
+                        . '</div>'
+                    ))
+                    ->modalSubmitActionLabel('Goedkeuren en inplannen')
+                    ->action(function (ContentItem $record) {
+                        self::approveRecord($record);
+                    }),
+
                 Tables\Actions\Action::make('approve_direct')
                     ->label('Direct goedkeuren')
                     ->icon('heroicon-o-check-badge')
@@ -265,7 +285,40 @@ class ContentItemResource extends Resource
                 Tables\Actions\EditAction::make(),
                 Tables\Actions\DeleteAction::make(),
             ])
+            ->bulkActions([
+                Tables\Actions\BulkAction::make('approve_selected')
+                    ->label('Selectie goedkeuren')
+                    ->icon('heroicon-o-check-circle')
+                    ->color('success')
+                    ->requiresConfirmation()
+                    ->modalDescription('Alle geselecteerde posts met status "In review" worden goedgekeurd en ingepland. Posts met een andere status worden overgeslagen.')
+                    ->deselectRecordsAfterCompletion()
+                    ->action(function (\Illuminate\Database\Eloquent\Collection $records) {
+                        $records->filter(fn (ContentItem $r) => $r->status === ContentStatus::InReview)
+                            ->each(fn (ContentItem $r) => self::approveRecord($r, notify: false));
+                        Notification::make()->title('Selectie goedgekeurd')->success()->send();
+                    }),
+            ])
             ->defaultSort('scheduled_for', 'asc');
+    }
+
+    /**
+     * Keurt een item goed en plant het in (gekozen tijd of eerstvolgend vrij
+     * slot). Lukt inplannen nu niet, dan blijft het op Goedgekeurd staan en
+     * pakt de uurlijkse scheduler het op.
+     */
+    public static function approveRecord(ContentItem $record, bool $notify = true): void
+    {
+        $record->changeStatus(ContentStatus::Goedgekeurd, 'Goedgekeurd via Filament.');
+
+        $slot = \App\Jobs\ProcessAutoSchedulerJob::scheduleApproved($record->fresh(['client', 'channels']));
+
+        if ($notify) {
+            Notification::make()
+                ->title($slot ? 'Goedgekeurd — wordt ingepland op ' . $slot->format('d-m-Y H:i') : 'Goedgekeurd — wacht op een vrij slot')
+                ->success()
+                ->send();
+        }
     }
 
     public static function getPages(): array
