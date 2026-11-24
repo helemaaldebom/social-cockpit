@@ -47,7 +47,7 @@ class ApprovalOnlyTest extends TestCase
     public function test_generation_never_schedules_and_always_stops_at_in_review(): void
     {
         OpenAI::fake([CreateResponse::fake()]);
-        Bus::fake([SchedulePostToPublerJob::class]);
+        Bus::fake([SchedulePostToPublerJob::class, \App\Jobs\SendTelegramReviewJob::class]);
         User::factory()->create();
 
         // Zelfs mét expliciete toekomstige datum mag er niets ingepland worden.
@@ -57,6 +57,7 @@ class ApprovalOnlyTest extends TestCase
 
         $this->assertSame(ContentStatus::InReview, $item->fresh()->status);
         Bus::assertNotDispatched(SchedulePostToPublerJob::class);
+        Bus::assertDispatched(\App\Jobs\SendTelegramReviewJob::class);
     }
 
     public function test_scheduler_ignores_items_that_are_not_approved(): void

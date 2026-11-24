@@ -31,12 +31,18 @@ Gaat altijd via `PublisherInterface` → `PublerPublisher`. Nooit rechtstreeks n
 
 ### Goedkeuring (harde regel)
 Er wordt NOOIT automatisch ingepland of gepubliceerd. `GenerateContentTextJob`
-stopt altijd op `in_review`. Alleen de actie "Goedkeuren" in Filament (tab
-"Te beoordelen", ook als bulk-actie) zet een item op `goedgekeurd` en plant het
-in via `ProcessAutoSchedulerJob::scheduleApproved()` (gekozen tijd, anders het
-eerstvolgende vrije slot; alleen de kanalen van het item zelf).
-`social:review-digest` stuurt elke maandag 08:00 een Telegram-overzicht van wat
-op goedkeuring wacht. Bouw geen pad dat deze stap overslaat.
+stopt altijd op `in_review` en stuurt de post via `SendTelegramReviewJob` naar
+Telegram (media + tekst + knoppen ✅ Goedkeuren / ❌ Afwijzen). Goedkeuren kan
+via die knop of via "Goedkeuren" in Filament (tab "Te beoordelen"); beide lopen
+via `ApprovalService::approve()` → `ProcessAutoSchedulerJob::scheduleApproved()`
+(gekozen tijd, anders het eerstvolgende vrije slot; alleen de kanalen van het
+item). Een antwoord op het review-bericht past de tekst aan via OpenAI; begint
+het met `tekst:` dan wordt de tekst letterlijk vervangen. Daarna volgt een nieuw
+review-bericht; knoppen onder oudere berichten zijn ongeldig.
+`social:review-digest` biedt elke maandag 08:00 alles wat nog wacht opnieuw aan.
+De Telegram-webhook controleert `X-Telegram-Bot-Api-Secret-Token`
+(`TELEGRAM_WEBHOOK_SECRET`, gezet via setWebhook). Bouw geen pad dat de
+goedkeuring overslaat.
 
 ### Publer-API valkuilen
 - `GET /posts` pagineert vanaf **page=0**. Beginnen bij 1 slaat de eerste 15
@@ -106,7 +112,7 @@ het kwaliteitsanker voor de schrijfstijl.
 
 ## Tests
 
-`php artisan test` — 45 tests, SQLite in-memory. Covert: status transitions,
+`php artisan test` — 51 tests, SQLite in-memory. Covert: status transitions,
 audit log, publish slot interval logica, webhook HMAC validatie, webhook media
 + originele tekst + idempotentie per `external_id`.
 
