@@ -10,6 +10,7 @@ use Illuminate\Contracts\Queue\ShouldQueue;
 use Illuminate\Foundation\Bus\Dispatchable;
 use Illuminate\Queue\InteractsWithQueue;
 use Illuminate\Queue\SerializesModels;
+use Illuminate\Support\Facades\Cache;
 use Illuminate\Support\Facades\Log;
 
 class SendTelegramPreviewJob implements ShouldQueue
@@ -59,6 +60,18 @@ class SendTelegramPreviewJob implements ShouldQueue
             Log::info('Telegram preview her-ingepland (item was verzet)', [
                 'content_item_id' => $item->id,
                 'nieuw_moment'    => $item->scheduled_for->copy()->subHours(22)->toIso8601String(),
+            ]);
+            return;
+        }
+
+        // Eén preview per item per publicatiemoment. Elke keer dat een item
+        // (opnieuw) wordt ingepland komt er een vertraagde preview-job bij; de
+        // oude jobs blijven in de queue staan. Zonder dit slot kwam dezelfde
+        // preview (met alle media) meerdere keren binnen.
+        $lockKey = "telegram-preview:{$item->id}:" . $item->scheduled_for->getTimestamp();
+        if (! Cache::add($lockKey, true, now()->addDays(3))) {
+            Log::info('Telegram preview overgeslagen: al verstuurd voor dit moment', [
+                'content_item_id' => $item->id,
             ]);
             return;
         }
