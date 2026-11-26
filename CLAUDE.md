@@ -112,7 +112,7 @@ het kwaliteitsanker voor de schrijfstijl.
 
 ## Tests
 
-`php artisan test` — 51 tests, SQLite in-memory. Covert: status transitions,
+`php artisan test` — 52 tests, SQLite in-memory. Covert: status transitions,
 audit log, publish slot interval logica, webhook HMAC validatie, webhook media
 + originele tekst + idempotentie per `external_id`.
 
